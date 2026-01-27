@@ -180,8 +180,9 @@ Each task includes:
 Each source is represented by a connector with a consistent interface:
 - `enumerate(seeds)`: return listing URLs or IDs.
 - `fetch(item)`: capture raw page content (via Firecrawl or manual artifact).
-- `extract(snapshot)`: produce structured fields with evidence.
 - `check_status(item)`: lightweight staleness check where allowed.
+
+Extraction is centralized in the Extraction Service. If source-specific logic is needed, implement it as extraction plugins inside the Extraction Service, not inside connectors.
 
 This keeps acquisition pluggable without hardcoding site logic into core pipeline code.
 
@@ -286,6 +287,7 @@ Merge policy:
 - Every non-null field has evidence (text span or image index).
 - Conflicting values are retained with provenance.
 - Raw snapshots stored for reprocessing.
+- Field-level facts are required (not optional) to preserve provenance.
 
 ### 5.3 Schema sketch (condensed)
 ```
@@ -332,14 +334,17 @@ Listing {
 ## 6) Geo and commute subsystem (open data only)
 
 ### 6.1 Geocoding
-- Self-hosted Pelias or Nominatim (OSM-based).
+- Self-hosted Pelias as primary (OSM-based).
+- Optional Nominatim fallback (self-hosted).
 - Local snapping with DataSF building footprints and parcels.
 - Store geocode precision and confidence.
+- No paid or hosted geocoding APIs.
 
 ### 6.2 Routing
-- OpenTripPlanner for transit (GTFS + GTFS-RT).
-- Valhalla or OSRM for walk/bike/drive.
+- OpenTripPlanner for transit (GTFS + GTFS-RT where allowed).
+- Valhalla for walk/bike/drive and isochrones (OSRM optional if needed for speed).
 - Precompute isochrones for anchors/time buckets.
+- No paid routing APIs.
 
 ### 6.3 QoL layers
 - 311 cases (noise proxy)
@@ -413,7 +418,7 @@ else: 0
 
 ### 7.5 Candidate retrieval
 - Structured filters (price, beds, neighborhood) in Postgres.
-- Full-text search on descriptions and amenities.
+- Full-text search on descriptions and amenities (Postgres FTS).
 - Semantic retrieval using OpenAI embeddings stored in pgvector.
 - Retrieve top-N candidates before LLM rerank.
 
@@ -479,7 +484,7 @@ Additional evaluation mechanics:
 - Compare view.
 - Near-miss explorer.
 - Pipeline board.
-- Alerts center.
+- Alerts center (local notifications or SMTP email only; no paid SMS).
 
 UX principles:
 - Always show “why this matches” and “what is missing”.
@@ -495,11 +500,11 @@ UX principles:
 - Scheduler (APScheduler)
 - Workers (Celery/RQ or asyncio)
 - Postgres + PostGIS
-- pgvector
+- pgvector (Postgres extension)
 - Redis
 - Object store (FS or MinIO)
 - OpenTripPlanner
-- Valhalla or OSRM
+- Valhalla (OSRM optional)
 
 ### 11.2 Orchestration
 - CLI commands: ingest, extract, normalize, dedupe, rank, alert, geo-sync, eval.
@@ -561,11 +566,11 @@ Acceptance milestones:
 ## 14) Open questions
 
 1. Queue system choice (Redis/RQ vs Celery vs Postgres-based queue).
-2. Geocoder choice (Pelias vs Nominatim).
-3. Routing engine choice (Valhalla vs OSRM).
-4. UI scope (minimal vs full SPA).
-5. Use of 511 GTFS feeds given licensing restrictions.
-6. Object storage (filesystem vs MinIO).
+2. Routing engine secondary option (run OSRM alongside Valhalla or Valhalla only).
+3. UI scope (minimal vs full SPA).
+4. Use of 511 GTFS feeds given licensing restrictions (local-only vs avoid 511 RT).
+5. Object storage (filesystem vs MinIO).
+6. Evidence storage shape (JSONB-only vs normalized FieldObservations table).
 
 ---
 
