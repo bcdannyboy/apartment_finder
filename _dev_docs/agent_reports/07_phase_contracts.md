@@ -26,3 +26,9 @@
 ### Test Summary
 - Test plan: _dev_docs/agent_reports/phase_tests_phase4.md
 - Coverage: blocking and scoring reproducibility, threshold band enforcement, merge policy ordering (trust, recency, confidence), conflict retention with provenance, ListingChange correctness and idempotency, and determinism for fixed inputs.
+
+## Phase 5 - Geo and Commute Enrichment
+
+### Test Summary
+- Test plan: _dev_docs/agent_reports/phase_tests_phase5.md
+- Coverage: local-only geocoding and routing (Pelias primary, Nominatim fallback), OTP for transit, Valhalla for walk/bike/drive, commute cache key shape, determinism and cache usage, geocode precision and confidence fields, and 511 GTFS local storage and graph rebuild behavior.
