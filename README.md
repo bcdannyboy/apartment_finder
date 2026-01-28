@@ -90,3 +90,5 @@ Apartment Finder is a local-first system for discovering, extracting, and rankin
 
 ## Getting started
 This repository is currently architecture-first. Implementation will follow the phase contracts and component specifications. See the core documents listed above for details.
+
+Local data platform setup (Postgres + PostGIS + pgvector, Redis + RQ, local-only networking, and egress allowlist) is documented in `LOCAL_SETUP.md`.
