@@ -32,3 +32,9 @@
 ### Test Summary
 - Test plan: _dev_docs/agent_reports/phase_tests_phase5.md
 - Coverage: local-only geocoding and routing (Pelias primary, Nominatim fallback), OTP for transit, Valhalla for walk/bike/drive, commute cache key shape, determinism and cache usage, geocode precision and confidence fields, and 511 GTFS local storage and graph rebuild behavior.
+
+## Phase 6
+
+### Test Summary
+- Test plan: _dev_docs/agent_reports/phase_tests_phase6.md
+- Coverage: SearchSpec validation and schema versioning, Postgres FTS + pgvector retrieval only, confidence-aware hard filters, LLM rerank inputs limited to structured fields and evidence, diversity caps by building and neighborhood, API schema stability, and deterministic outputs.
