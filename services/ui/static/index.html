@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Apartment Finder - Evidence UI</title>
+  <link rel="stylesheet" href="/assets/app.css" />
+</head>
+<body>
+  <div class="grain"></div>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark">AF</span>
+      <div>
+        <h1>Apartment Finder</h1>
+        <p>Evidence-first listings</p>
+      </div>
+    </div>
+    <nav class="nav">
+      <a href="#list" class="nav-link">Listings</a>
+      <a href="#compare" class="nav-link">Compare</a>
+      <a href="#near-miss" class="nav-link">Near-Miss</a>
+      <a href="#alerts" class="nav-link">Alerts</a>
+    </nav>
+  </header>
+
+  <main id="app" class="app"></main>
+
+  <section id="evidence-drawer" class="drawer" aria-hidden="true">
+    <div class="drawer-header">
+      <h2>Evidence</h2>
+      <button id="drawer-close" class="ghost">Close</button>
+    </div>
+    <div id="drawer-body" class="drawer-body"></div>
+  </section>
+
+  <script src="/assets/app.js"></script>
+</body>
+</html>
