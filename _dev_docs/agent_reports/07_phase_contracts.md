@@ -44,3 +44,9 @@
 ### Test Summary
 - Test plan: _dev_docs/agent_reports/phase_tests_phase7.md
 - Coverage: matching logic vs ranking hard constraints, ListingChange triggers and idempotency, dispatch logging correctness and immutability, local notification and SMTP-only enforcement, and alert error handling and retry rules.
+
+## Phase 8
+
+### Test Summary
+- Test plan: _dev_docs/agent_reports/phase_tests_phase8.md
+- Coverage: UI uses API only, evidence surfaced in detail and history views, change history ordering with evidence links, compare and near-miss input validation, deterministic regression suite on frozen snapshots, and evaluation metric sanity checks.
