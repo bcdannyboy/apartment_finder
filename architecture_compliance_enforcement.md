@@ -11,9 +11,9 @@
 - No login automation, CAPTCHA bypass, or paywall circumvention.
 
 ## Network egress enforcement
-- Outbound network allowlist includes Firecrawl and OpenAI endpoints only.
-- All other outbound HTTP requests are blocked.
-- Enforcement is required at runtime (client allowlist) and at host or container network policy.
+- Outbound network egress is allowed to all URLs (no allowlist restriction).
+- Client allowlist enforcement is disabled unless explicitly configured.
+- Host or container network policy should permit full outbound access.
 
 ## Local-only binding
 - Services must bind to localhost or local container network addresses.

@@ -11,7 +11,7 @@
 - Ensure deterministic behavior for fixed inputs and seed sets.
 
 ## Hard constraints
-- Candidate retrieval uses Postgres FTS and pgvector only.
+- Candidate retrieval uses Postgres FTS and pgvector by default; external search may be used when configured and must be audited.
 - LLM rerank uses structured fields and evidence only (no raw text beyond evidence).
 
 ## Test data and fixtures
@@ -37,10 +37,10 @@
 - Invalid combinations are rejected with field-level errors (for example, both "only_available_now" and "move_in_after" when mutually exclusive).
 - Normalization rules are applied consistently (whitespace, casing, trimming, canonical enum values).
 
-## Retrieval (Postgres FTS + pgvector only)
+## Retrieval (Postgres FTS + pgvector, optional external)
 ### Query path integrity
-- Retrieval executes only Postgres FTS and pgvector queries.
-- No external search engines, vector stores, or cache layers are used.
+- Retrieval executes Postgres FTS and pgvector queries.
+- External search engines or hosted vector stores may be used when enabled; usage must be explicit.
 - Test via query instrumentation and database query auditing.
 
 ### FTS behavior
@@ -54,7 +54,7 @@
 - Validate ANN index usage with query plan inspection.
 
 ### Combined retrieval
-- Validate merge logic for FTS and vector candidates (union, dedupe, stable ordering).
+- Validate merge logic for FTS, vector, and external candidates (union, dedupe, stable ordering).
 - Ensure candidate limits are enforced before rerank.
 - Confirm deterministic ordering for equal scores via stable tie-breakers.
 

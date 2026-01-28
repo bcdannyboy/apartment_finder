@@ -77,7 +77,7 @@ Define cross-phase service contracts and the minimum guarantees each phase provi
 - Test plan: _dev_docs/agent_reports/phase_tests_integration.md
 - Coverage: full pipeline and contract boundaries across phases.
 - Contract tests for Policy Gate, Snapshot Store, Ranking API, and Alert API.
-- Network egress restricted to Firecrawl and OpenAI endpoints only.
+- Network egress is permitted; audit logging should capture external destinations when enabled.
 - Determinism and snapshot immutability enforced in cross-phase runs.
 
 ## Notes

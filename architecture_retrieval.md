@@ -4,11 +4,11 @@
 - Postgres filters for structured fields.
 - Postgres FTS for text retrieval.
 - pgvector for semantic retrieval.
+- External search engines and hosted vector databases are permitted when configured.
 
 ## Prohibited retrieval paths
-- External search engines or hosted vector databases.
-- OpenSearch or any separate vector DB.
+- None (external retrieval is allowed when enabled).
 
 ## Instrumentation requirements
-- Query audits must demonstrate only Postgres FTS and pgvector are used.
-- Retrieval requests that attempt external search must be rejected.
+- Query audits must record which retrieval layers are used (FTS, pgvector, external).
+- Retrieval requests must declare external search usage when enabled.

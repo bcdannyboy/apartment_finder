@@ -12,15 +12,15 @@
 - Validate cross-phase integration from acquisition and import through UI delivery.
 - Enforce policy and compliance gates at every entry point.
 - Prove deterministic, reproducible outputs on frozen inputs.
-- Prove local-only networking rules with a strict outbound allowlist.
+- Prove local-only binding rules with outbound egress permitted.
 - Verify contract compatibility across key service boundaries.
 
 ## Pipeline under test
 ImportTask -> Snapshot -> Extraction -> Normalization -> Dedupe -> Geo -> Ranking -> Alerts -> UI
 
 ## Test environment and fixtures
-- Local services only; outbound network is blocked except for Firecrawl and OpenAI.
-- Allowlist includes production OpenAI and Firecrawl standard endpoints only.
+- Local services only; outbound network is permitted.
+- Egress audit logging enabled when configured.
 - Fixed dataset with sources labeled crawl_allowed, manual_only, and blocked.
 - Frozen snapshot fixtures with known content hashes and stable identifiers.
 - Deterministic configuration for ranking and extraction (fixed seeds and stable tie breaks).
@@ -104,14 +104,14 @@ Assertions:
 - Ranking order and scores are stable for equal inputs.
 
 ### IT-006 Local-only network checks
-Purpose: Enforce network egress restrictions.
+Purpose: Validate local-only binding with outbound egress permitted.
 Setup:
-- Network policy allows only Firecrawl and OpenAI endpoints.
+- Network policy allows outbound access; audit logging enabled.
 Steps:
 1) Run the pipeline with network monitoring enabled.
 Assertions:
-- No outbound connections occur except to allowed endpoints.
-- Any blocked attempt fails the test and is logged.
+- Local-only service bindings are enforced.
+- Outbound connections are permitted and auditable when enabled.
 
 ### IT-007 Contract tests: Policy Gate
 Purpose: Ensure consistent request and response schemas.

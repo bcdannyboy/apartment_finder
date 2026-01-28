@@ -151,6 +151,7 @@ This document is the single source of truth for system architecture, constraints
 
 ## Ranking and retrieval
 - Candidate retrieval via Postgres filters + Postgres FTS + pgvector.
+- External search engines or hosted vector databases may be used when configured.
 - Hard filters are probabilistic when field confidence is low.
 - Ranking stages: fast scoring -> LLM rerank -> diversity rerank.
 - Near-miss pool includes tradeoff explanation.
@@ -160,6 +161,7 @@ This document is the single source of truth for system architecture, constraints
 - Redis for queues and short-lived caches (RQ).
 - Object store: filesystem.
 - Services run locally and bind to localhost.
+- Outbound network egress is allowed to all URLs (no allowlist restriction).
 
 ## Initial functional scope (phase-based)
 - Source registry and policy gating.
