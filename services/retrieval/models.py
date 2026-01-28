@@ -42,7 +42,6 @@ class ListingDocument:
 class RetrievalQuery:
     keywords: List[str]
     vector: Optional[List[float]] = None
-    external_query: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -50,7 +49,6 @@ class RetrievalCandidate:
     listing_id: str
     fts_score: float = 0.0
     vector_score: float = 0.0
-    external_score: float = 0.0
     combined_score: float = 0.0
 
 

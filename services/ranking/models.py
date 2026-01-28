@@ -81,3 +81,5 @@ class RankingConfig:
     diversity_caps: DiversityCaps = DiversityCaps()
     max_fields_for_rerank: int = 30
     max_evidence_per_field: int = 5
+    blocked_rerank_fields: tuple[str, ...] = ("title", "body", "raw_text", "description")
+    max_text_length_for_rerank: int = 200

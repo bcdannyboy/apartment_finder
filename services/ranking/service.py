@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from typing import Dict, List, Optional, Tuple
 
-from services.common.enums import CommuteMode
 from services.ranking.models import (
     CommuteValue,
     DiversityCaps,
@@ -175,6 +174,54 @@ class RankingService:
                     return False, [f"commute_exceeds:{commute.target_label}"]
                 flags.append(f"commute_low_confidence:{commute.target_label}")
 
+        availability_field = listing.fields.get("availability")
+        if hard.available_now:
+            passes, flag = _availability_constraint(
+                availability_field,
+                latest=search_spec.created_at.date(),
+                earliest=None,
+                threshold=threshold,
+                label="available_now",
+                reference_date=search_spec.created_at.date(),
+            )
+            if not passes:
+                return False, [flag]
+            if flag:
+                flags.append(flag)
+
+        if hard.move_in_after is not None:
+            passes, flag = _availability_constraint(
+                availability_field,
+                latest=None,
+                earliest=hard.move_in_after,
+                threshold=threshold,
+                label="move_in_after",
+                reference_date=search_spec.created_at.date(),
+            )
+            if not passes:
+                return False, [flag]
+            if flag:
+                flags.append(flag)
+
+        for feature in hard.must_have:
+            present, confidence = _feature_match(listing, feature)
+            if present is None:
+                flags.append(f"feature_missing:{feature}")
+                continue
+            if not present:
+                if (confidence or 0.0) >= threshold:
+                    return False, [f"feature_missing:{feature}"]
+                flags.append(f"feature_low_confidence:{feature}")
+
+        for feature in hard.exclude:
+            present, confidence = _feature_match(listing, feature)
+            if present is None:
+                continue
+            if present:
+                if (confidence or 0.0) >= threshold:
+                    return False, [f"feature_excluded:{feature}"]
+                flags.append(f"feature_low_confidence:{feature}")
+
         return True, flags
 
     def _score(self, listing: RankingListing, search_spec: SearchSpecModel, flags: List[str]) -> RankedListing:
@@ -184,21 +231,30 @@ class RankingService:
         price_field = listing.fields.get("price")
         if price_field and hard.price_max:
             try:
-                price_val = float(price_field.value)
+                price_val, price_confidence = _resolve_structured_field(price_field)
+                price_val = float(price_val)
                 utility += max(0.0, 1.0 - (price_val / hard.price_max))
             except (TypeError, ValueError):
                 pass
-            confidence_values.append(price_field.confidence)
+            confidence_values.append(price_confidence)
 
         beds_field = listing.fields.get("beds")
         if beds_field and hard.beds_min is not None:
-            utility += 0.5 if float(beds_field.value) >= hard.beds_min else 0.0
-            confidence_values.append(beds_field.confidence)
+            try:
+                beds_val, beds_confidence = _resolve_structured_field(beds_field)
+                utility += 0.5 if float(beds_val) >= hard.beds_min else 0.0
+                confidence_values.append(beds_confidence)
+            except (TypeError, ValueError):
+                pass
 
         baths_field = listing.fields.get("baths")
         if baths_field and hard.baths_min is not None:
-            utility += 0.25 if float(baths_field.value) >= hard.baths_min else 0.0
-            confidence_values.append(baths_field.confidence)
+            try:
+                baths_val, baths_confidence = _resolve_structured_field(baths_field)
+                utility += 0.25 if float(baths_val) >= hard.baths_min else 0.0
+                confidence_values.append(baths_confidence)
+            except (TypeError, ValueError):
+                pass
 
         for commute in hard.commute_max:
             commute_value = listing.commutes.get(commute.target_label)
@@ -225,15 +281,29 @@ class RankingService:
         payload: List[Dict[str, object]] = []
         for listing in listings:
             fields = []
-            for name in sorted(listing.fields.keys())[: self._config.max_fields_for_rerank]:
+            allowed_fields = [
+                name
+                for name in sorted(listing.fields.keys())
+                if name not in self._config.blocked_rerank_fields
+            ]
+            for name in allowed_fields[: self._config.max_fields_for_rerank]:
                 field = listing.fields[name]
-                evidence = field.evidence[: self._config.max_evidence_per_field]
+                value, confidence = _resolve_structured_field(field)
+                if isinstance(value, str) and len(value) > self._config.max_text_length_for_rerank:
+                    continue
+                evidence = sorted(
+                    field.evidence,
+                    key=lambda ev: (ev.evidence_id, ev.fact_id or ""),
+                )[: self._config.max_evidence_per_field]
                 fields.append(
                     {
                         "field": name,
-                        "value": field.value,
-                        "confidence": field.confidence,
-                        "evidence": [ev.evidence_id for ev in evidence],
+                        "value": value,
+                        "confidence": confidence,
+                        "evidence": [
+                            {"evidence_id": ev.evidence_id, "fact_id": ev.fact_id}
+                            for ev in evidence
+                        ],
                     }
                 )
             payload.append(
@@ -294,19 +364,142 @@ def _numeric_constraint(
 ) -> Tuple[bool, str]:
     if field is None:
         return True, f"{label}_missing"
+    value_raw, confidence = _resolve_structured_field(field)
     try:
-        value = float(field.value)
+        value = float(value_raw)
     except (TypeError, ValueError):
         return True, f"{label}_invalid"
     if min_value is not None and value < min_value:
-        if field.confidence >= threshold:
+        if (confidence or 0.0) >= threshold:
             return False, f"{label}_below_min"
         return True, f"{label}_low_confidence"
     if max_value is not None and value > max_value:
-        if field.confidence >= threshold:
+        if (confidence or 0.0) >= threshold:
             return False, f"{label}_above_max"
         return True, f"{label}_low_confidence"
     return True, ""
+
+
+def _resolve_structured_field(field: Optional[StructuredField]) -> Tuple[Optional[object], float]:
+    if field is None:
+        return None, 0.0
+    value = field.value
+    confidence = field.confidence or 0.0
+    if isinstance(value, list) and value:
+        candidates: List[Tuple[object, float]] = []
+        for item in value:
+            if isinstance(item, dict) and "value" in item:
+                item_conf = item.get("confidence", confidence)
+                candidates.append((item.get("value"), float(item_conf or 0.0)))
+            elif isinstance(item, (list, tuple)) and len(item) == 2:
+                item_val, item_conf = item
+                try:
+                    item_conf_val = float(item_conf)
+                except (TypeError, ValueError):
+                    item_conf_val = confidence
+                candidates.append((item_val, item_conf_val))
+            else:
+                candidates.append((item, confidence))
+        candidates.sort(key=lambda pair: (-(pair[1] or 0.0), str(pair[0])))
+        value, confidence = candidates[0]
+    return value, confidence
+
+
+def _feature_match(listing: RankingListing, feature: str) -> Tuple[Optional[bool], Optional[float]]:
+    feature_key = feature.strip().lower()
+    normalized_keys = {
+        feature_key,
+        feature_key.replace(" ", "_"),
+        feature_key.replace("_", " "),
+    }
+    for key in normalized_keys:
+        field = listing.fields.get(key)
+        if field is None:
+            continue
+        value, confidence = _resolve_structured_field(field)
+        return _truthy(value), confidence
+
+    for key in ("amenities", "amenity", "features"):
+        field = listing.fields.get(key)
+        if field is None:
+            continue
+        value, confidence = _resolve_structured_field(field)
+        items: List[str] = []
+        if isinstance(value, str):
+            items = [part.strip().lower().replace(" ", "_") for part in value.split(",") if part.strip()]
+        elif isinstance(value, list):
+            for item in value:
+                if isinstance(item, str):
+                    items.append(item.strip().lower().replace(" ", "_"))
+                elif isinstance(item, dict) and "value" in item:
+                    items.append(str(item["value"]).strip().lower().replace(" ", "_"))
+        if items:
+            return feature_key in items, confidence
+        return _truthy(value), confidence
+
+    return None, None
+
+
+def _truthy(value: Optional[object]) -> Optional[bool]:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value > 0
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"yes", "true", "1", "y", "available", "included", "present"}:
+            return True
+        if normalized in {"no", "false", "0", "n", "not available", "unavailable", "absent"}:
+            return False
+    return None
+
+
+def _availability_constraint(
+    field: Optional[StructuredField],
+    *,
+    earliest: Optional[date],
+    latest: Optional[date],
+    threshold: float,
+    label: str,
+    reference_date: date,
+) -> Tuple[bool, str]:
+    if field is None:
+        return True, f"{label}_missing"
+    value_raw, confidence = _resolve_structured_field(field)
+    if value_raw is None:
+        return True, f"{label}_missing"
+    value_date = _parse_availability_date(value_raw, reference_date)
+    if value_date is None:
+        return True, f"{label}_invalid"
+    if earliest is not None and value_date < earliest:
+        if (confidence or 0.0) >= threshold:
+            return False, f"{label}_before_min"
+        return True, f"{label}_low_confidence"
+    if latest is not None and value_date > latest:
+        if (confidence or 0.0) >= threshold:
+            return False, f"{label}_after_max"
+        return True, f"{label}_low_confidence"
+    return True, ""
+
+
+def _parse_availability_date(value: object, reference_date: date) -> Optional[date]:
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"now", "immediate", "available", "available now"}:
+            return reference_date
+        if not normalized:
+            return None
+        try:
+            return datetime.fromisoformat(normalized).date()
+        except ValueError:
+            return None
+    return None
 
 
 def _to_ranking_listing(doc: ListingDocument) -> RankingListing:

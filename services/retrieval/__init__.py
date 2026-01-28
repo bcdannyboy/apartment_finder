@@ -1,1 +1,1 @@
-"""Retrieval service for FTS, vector, and external search."""
+"""Retrieval service for Postgres FTS and pgvector."""

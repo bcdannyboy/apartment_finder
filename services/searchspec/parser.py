@@ -25,6 +25,14 @@ DEFAULT_NEIGHBORHOODS = {
     "richmond",
 }
 
+DEFAULT_NEIGHBORHOOD_ALIASES = {
+    "mission district": "mission",
+    "south of market": "soma",
+    "so ma": "soma",
+    "haight-ashbury": "haight",
+    "noe": "noe valley",
+}
+
 DEFAULT_FEATURE_ALIASES = {
     "in unit laundry": "in_unit_laundry",
     "laundry": "in_unit_laundry",
@@ -45,12 +53,17 @@ class SearchSpecParser:
         *,
         schema_version: str = "v1",
         known_neighborhoods: Optional[Iterable[str]] = None,
+        neighborhood_aliases: Optional[Dict[str, str]] = None,
         feature_aliases: Optional[Dict[str, str]] = None,
     ) -> None:
         self._schema_version = schema_version
         self._known_neighborhoods = set(
             name.strip().lower() for name in (known_neighborhoods or DEFAULT_NEIGHBORHOODS)
         )
+        self._neighborhood_aliases = {
+            key.strip().lower(): value.strip().lower()
+            for key, value in (neighborhood_aliases or DEFAULT_NEIGHBORHOOD_ALIASES).items()
+        }
         self._feature_aliases = {
             key.strip().lower(): value for key, value in (feature_aliases or DEFAULT_FEATURE_ALIASES).items()
         }
@@ -139,10 +152,8 @@ class SearchSpecParser:
             cleaned = self._normalize_text(val)
             if not cleaned:
                 continue
-            if cleaned not in self._known_neighborhoods:
-                normalized.append(cleaned)
-            else:
-                normalized.append(cleaned)
+            canonical = self._neighborhood_aliases.get(cleaned, cleaned)
+            normalized.append(canonical)
         return normalized
 
     def _validate_constraints(self, spec: SearchSpecModel) -> List[Dict[str, Any]]:
@@ -197,6 +208,14 @@ class SearchSpecParser:
                 }
             )
         for entry in hard.commute_max:
+            if not entry.target_label:
+                errors.append(
+                    {
+                        "code": "missing_required",
+                        "message": "commute_max.target_label is required",
+                        "path": "/hard/commute_max",
+                    }
+                )
             if entry.max_min < 0:
                 errors.append(
                     {

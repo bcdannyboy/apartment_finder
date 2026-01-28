@@ -37,3 +37,8 @@ class CommuteMode(str, Enum):
     walk = "walk"
     bike = "bike"
     drive = "drive"
+
+
+class AlertChannel(str, Enum):
+    local = "local"
+    smtp = "smtp"

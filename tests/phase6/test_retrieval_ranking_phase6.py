@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from fastapi.testclient import TestClient
 import pytest
 
-from services.retrieval.models import FieldValue, ListingDocument
+from services.retrieval.models import EvidenceRef, FieldValue, ListingDocument
 from services.retrieval.repository import ListingRepository
 from services.retrieval.service import RetrievalConfig, RetrievalQuery, RetrievalService
 from services.ranking.models import RankingConfig, StructuredField
@@ -45,6 +45,13 @@ def test_searchspec_parser_validation_and_normalization():
     result = parser.parse(payload)
     assert result.spec is not None
     assert result.spec.hard.must_have == ["in_unit_laundry"]
+    assert result.spec.hard.neighborhoods_include == ["mission"]
+
+    alias_payload = dict(payload)
+    alias_payload["hard"] = dict(payload["hard"], neighborhoods_include=["Mission District"])
+    result = parser.parse(alias_payload)
+    assert result.spec is not None
+    assert result.spec.hard.neighborhoods_include == ["mission"]
 
     bad_version = dict(payload)
     bad_version["schema_version"] = "v2"
@@ -69,6 +76,12 @@ def test_searchspec_parser_validation_and_normalization():
     result = parser.parse(conflict)
     assert result.spec is None
     assert any(err["code"] == "invalid_combination" for err in result.errors)
+
+    bad_commute = dict(payload)
+    bad_commute["hard"] = dict(payload["hard"], commute_max=[{"target_label": " ", "mode": "transit", "max_min": 30}])
+    result = parser.parse(bad_commute)
+    assert result.spec is None
+    assert any(err["code"] == "missing_required" for err in result.errors)
 
 
 def test_retrieval_fts_vector_and_audit_layers():
@@ -157,6 +170,20 @@ def test_hard_filters_confidence_and_flags():
             },
         )
     )
+    repo.add(
+        ListingDocument(
+            listing_id="list-missing",
+            building_id="b3",
+            neighborhood="mission",
+            source_id="s1",
+            title="two bed",
+            body="laundry",
+            structured={
+                "beds": FieldValue(value=2, confidence=0.9),
+                "baths": FieldValue(value=1, confidence=0.9),
+            },
+        )
+    )
     retrieval = RetrievalService(repo, config=RetrievalConfig())
     ranking = RankingService(listings=repo, retrieval=retrieval, config=RankingConfig())
     parser = SearchSpecParser(known_neighborhoods={"mission"})
@@ -166,8 +193,73 @@ def test_hard_filters_confidence_and_flags():
     listing_ids = [item.listing_id for item in result.results]
     assert "list-high" not in listing_ids
     assert "list-low" in listing_ids
+    assert "list-missing" in listing_ids
     flags = [item.explanation.flags for item in result.results if item.listing_id == "list-low"][0]
     assert any("price" in flag for flag in flags)
+    missing_flags = [item.explanation.flags for item in result.results if item.listing_id == "list-missing"][0]
+    assert any("price_missing" in flag for flag in missing_flags)
+
+
+def test_feature_hard_filters_confidence():
+    repo = ListingRepository()
+    repo.add(
+        ListingDocument(
+            listing_id="list-pass",
+            building_id="b1",
+            neighborhood="mission",
+            source_id="s1",
+            title="two bed",
+            body="laundry",
+            structured={
+                "in_unit_laundry": FieldValue(value=True, confidence=0.9),
+            },
+        )
+    )
+    repo.add(
+        ListingDocument(
+            listing_id="list-high",
+            building_id="b2",
+            neighborhood="mission",
+            source_id="s1",
+            title="two bed",
+            body="laundry",
+            structured={
+                "in_unit_laundry": FieldValue(value=False, confidence=0.9),
+            },
+        )
+    )
+    repo.add(
+        ListingDocument(
+            listing_id="list-low",
+            building_id="b3",
+            neighborhood="mission",
+            source_id="s1",
+            title="two bed",
+            body="laundry",
+            structured={
+                "in_unit_laundry": FieldValue(value=False, confidence=0.4),
+            },
+        )
+    )
+    retrieval = RetrievalService(repo, config=RetrievalConfig())
+    ranking = RankingService(listings=repo, retrieval=retrieval, config=RankingConfig())
+    payload = {
+        "schema_version": "v1",
+        "search_spec_id": "spec-feature",
+        "created_at": FIXED_TIME.isoformat(),
+        "raw_prompt": "two bed",
+        "hard": {"must_have": ["in unit laundry"]},
+    }
+    parser = SearchSpecParser(known_neighborhoods={"mission"})
+    spec = parser.parse(payload).spec
+    assert spec is not None
+    result = ranking.rank(spec, limit=10)
+    listing_ids = [item.listing_id for item in result.results]
+    assert "list-pass" in listing_ids
+    assert "list-low" in listing_ids
+    assert "list-high" not in listing_ids
+    low_flags = [item.explanation.flags for item in result.results if item.listing_id == "list-low"][0]
+    assert any("feature_low_confidence:in_unit_laundry" in flag for flag in low_flags)
 
 
 def test_diversity_caps_by_building():
@@ -231,7 +323,10 @@ def test_ranking_api_contract(monkeypatch):
 
 def test_rerank_payload_constraints():
     repo = ListingRepository()
-    fields = {f"field_{idx}": FieldValue(value=idx, confidence=0.9) for idx in range(50)}
+    evidence = [EvidenceRef(evidence_id="ev-1", fact_id="fact-1")]
+    fields = {f"field_{idx}": FieldValue(value=idx, confidence=0.9, evidence=evidence) for idx in range(20)}
+    fields["description"] = FieldValue(value="x" * 300, confidence=0.9, evidence=evidence)
+    fields["title"] = FieldValue(value="Great unit", confidence=0.9, evidence=evidence)
     repo.add(
         ListingDocument(
             listing_id="list-1",
@@ -250,4 +345,8 @@ def test_rerank_payload_constraints():
     assert spec is not None
     result = ranking.rank(spec, limit=10)
     assert len(result.rerank_payload[0]["fields"]) == 10
-    assert all("title" not in field for field in result.rerank_payload[0].keys())
+    field_names = {field["field"] for field in result.rerank_payload[0]["fields"]}
+    assert "title" not in field_names
+    assert "description" not in field_names
+    assert all(isinstance(field["evidence"], list) for field in result.rerank_payload[0]["fields"])
+    assert result.rerank_payload[0]["fields"][0]["evidence"][0]["fact_id"] == "fact-1"
