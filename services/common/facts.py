@@ -97,6 +97,7 @@ class FactStore:
         locator: Dict[str, Any],
         excerpt: Optional[str] = None,
         evidence_id: Optional[str] = None,
+        created_at: Optional[datetime] = None,
     ) -> EvidenceRecord:
         if kind == EvidenceKind.text_span:
             _validate_text_span(locator)
@@ -111,7 +112,7 @@ class FactStore:
             kind=kind,
             locator=locator,
             excerpt=excerpt,
-            created_at=_now(),
+            created_at=created_at or _now(),
         )
         self._evidence[record.evidence_id] = record
         return record
