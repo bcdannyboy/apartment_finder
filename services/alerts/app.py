@@ -3,10 +3,13 @@ from datetime import datetime, timezone
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
+from services.alerts.dispatchers import DisabledChannelAdapter
 from services.alerts.models import AlertsDispatchRequest, AlertsRunRequest
 from services.alerts.repository import AlertRepository
 from services.alerts.service import AlertService
 from services.common.api import error_response, ok_response
+from services.common.enums import AlertChannel
+from services.dedupe.service import ListingChangeStore
 from services.ranking.service import RankingService
 from services.retrieval.repository import ListingRepository
 from services.retrieval.service import RetrievalService
@@ -20,8 +23,20 @@ _retrieval = RetrievalService(_listing_repo)
 _searchspec_repo = SearchSpecRepository()
 _searchspec_service = SearchSpecService(_searchspec_repo)
 _ranking = RankingService(listings=_listing_repo, retrieval=_retrieval)
+_listing_changes = ListingChangeStore()
 _alert_repo = AlertRepository()
-_alert_service = AlertService(_alert_repo, _searchspec_service, _ranking)
+_dispatchers = {
+    AlertChannel.local: DisabledChannelAdapter(reason="local_notifications_unavailable"),
+    AlertChannel.smtp: DisabledChannelAdapter(reason="smtp_not_configured"),
+}
+_alert_service = AlertService(
+    _alert_repo,
+    _searchspec_service,
+    _ranking,
+    _listing_repo,
+    _listing_changes,
+    dispatchers=_dispatchers,
+)
 
 
 def _parse_timestamp(value: str) -> datetime:

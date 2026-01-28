@@ -4,8 +4,12 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi.testclient import TestClient
 
+from services.alerts.dispatchers import DispatchResult
 from services.alerts.repository import AlertRepository
 from services.alerts.service import AlertService
+from services.common.enums import AlertChannel
+from services.dedupe.models import ListingChange
+from services.dedupe.service import ListingChangeStore
 from services.ranking.service import RankingService
 from services.retrieval.models import ListingDocument
 from services.retrieval.repository import ListingRepository
@@ -21,6 +25,10 @@ FIXED_TIME = datetime(2026, 1, 28, tzinfo=timezone.utc)
 def test_alerts_api_run_and_dispatch():
     import services.alerts.app as alerts_app
 
+    class StubDispatcher:
+        def send(self, alert):
+            return DispatchResult(success=True)
+
     listing_repo = ListingRepository()
     listing_repo.add(
         ListingDocument(
@@ -35,6 +43,18 @@ def test_alerts_api_run_and_dispatch():
     alerts_app._listing_repo = listing_repo
     alerts_app._retrieval = RetrievalService(listing_repo, config=RetrievalConfig())
     alerts_app._ranking = RankingService(listings=listing_repo, retrieval=alerts_app._retrieval)
+    listing_changes = ListingChangeStore()
+    listing_changes.record(
+        ListingChange(
+            change_id="chg-1",
+            listing_id="list-1",
+            field_path="/listing/title",
+            old_value_json="Old",
+            new_value_json="Two bed",
+            changed_at=FIXED_TIME,
+        )
+    )
+    alerts_app._listing_changes = listing_changes
 
     search_repo = SearchSpecRepository()
     search_service = SearchSpecService(search_repo, parser=SearchSpecParser(known_neighborhoods={"mission"}))
@@ -55,10 +75,14 @@ def test_alerts_api_run_and_dispatch():
         alert_repo,
         search_service,
         alerts_app._ranking,
+        listing_repo,
+        listing_changes,
+        dispatchers={AlertChannel.local: StubDispatcher()},
         clock=lambda: FIXED_TIME,
     )
     alerts_app._alert_repo = alert_repo
     alerts_app._alert_service = alert_service
+    alerts_app._dispatchers = {AlertChannel.local: StubDispatcher()}
 
     client = TestClient(alerts_app.app)
     response = client.post(

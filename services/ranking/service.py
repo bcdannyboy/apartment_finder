@@ -112,6 +112,14 @@ class RankingService:
                 flags[listing.listing_id] = listing_flags
         return kept, flags
 
+    def evaluate_hard_constraints(
+        self,
+        listing: ListingDocument,
+        search_spec: SearchSpecModel,
+    ) -> Tuple[bool, List[str]]:
+        ranking_listing = _to_ranking_listing(listing)
+        return self._evaluate_listing(ranking_listing, search_spec)
+
     def _evaluate_listing(self, listing: RankingListing, search_spec: SearchSpecModel) -> Tuple[bool, List[str]]:
         flags: List[str] = []
         hard = search_spec.hard
