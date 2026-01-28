@@ -20,3 +20,9 @@
 - Test plan: _dev_docs/agent_reports/phase_tests_phase3.md
 - Coverage: deterministic pre-extraction, Structured Outputs schema validation, evidence requirements, ambiguity handling, validation_report behavior, normalization preservation, evidence locator validity, and determinism and replay on frozen snapshots.
 - Tests inherit Phase 1 hard constraints and the evidence model.
+
+## Phase 4 - Entity Resolution and Canonicalization
+
+### Test Summary
+- Test plan: _dev_docs/agent_reports/phase_tests_phase4.md
+- Coverage: blocking and scoring reproducibility, threshold band enforcement, merge policy ordering (trust, recency, confidence), conflict retention with provenance, ListingChange correctness and idempotency, and determinism for fixed inputs.
