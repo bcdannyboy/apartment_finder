@@ -38,3 +38,9 @@
 ### Test Summary
 - Test plan: _dev_docs/agent_reports/phase_tests_phase6.md
 - Coverage: SearchSpec validation and schema versioning, Postgres FTS + pgvector retrieval only, confidence-aware hard filters, LLM rerank inputs limited to structured fields and evidence, diversity caps by building and neighborhood, API schema stability, and deterministic outputs.
+
+## Phase 7
+
+### Test Summary
+- Test plan: _dev_docs/agent_reports/phase_tests_phase7.md
+- Coverage: matching logic vs ranking hard constraints, ListingChange triggers and idempotency, dispatch logging correctness and immutability, local notification and SMTP-only enforcement, and alert error handling and retry rules.
