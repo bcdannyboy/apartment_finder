@@ -50,3 +50,28 @@
 ### Test Summary
 - Test plan: _dev_docs/agent_reports/phase_tests_phase8.md
 - Coverage: UI uses API only, evidence surfaced in detail and history views, change history ordering with evidence links, compare and near-miss input validation, deterministic regression suite on frozen snapshots, and evaluation metric sanity checks.
+
+## Purpose
+Define cross-phase service contracts and the minimum guarantees each phase provides to the next.
+
+## Contract Surfaces
+- Policy Gate API
+- Snapshot Store API
+- Ranking API
+- Alert API
+
+## Contract Quality Gates
+- Schema compatibility and versioning rules
+- Error handling and retry guidance
+- Idempotency and immutability guarantees
+- Evidence and provenance requirements
+
+## Integration Tests
+- Test plan: _dev_docs/agent_reports/phase_tests_integration.md
+- Coverage: full pipeline and contract boundaries across phases.
+- Contract tests for Policy Gate, Snapshot Store, Ranking API, and Alert API.
+- Network egress restricted to Firecrawl and OpenAI endpoints only.
+- Determinism and snapshot immutability enforced in cross-phase runs.
+
+## Notes
+This document focuses on interface guarantees; implementation details live in service specs.
