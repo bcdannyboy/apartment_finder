@@ -1,3 +1,13 @@
+STATUS: Non-authoritative research notes. Superseded where conflicts with architecture_source_of_truth.md and architecture_decisions_and_naming.md.
+
+Overrides:
+- Paid services limited to OpenAI and Firecrawl.
+- Retrieval uses Postgres FTS + pgvector only.
+- Extraction is centralized in Extraction Service; connectors do not extract.
+- Manual-only sources are ImportTask only; no automated crawling.
+- Geo and routing are local-only (Pelias, Nominatim fallback, OTP, Valhalla; OSRM secondary).
+- Alerts are local notifications or SMTP only.
+
 ## 10-bullet summary (Coverage & Acquisition verdict)
 
 1. **The big portals you listed (Craigslist, Zillow, Realtor.com, Apartments.com, PadMapper, Zumper)** explicitly restrict “robots/spiders/scraping/automated queries” in their Terms—so for a compliant system, you either (a) **license/partner**, (b) use **first‑party feeds/alerts that the site itself provides**, or (c) treat them as **manual-only** and focus your automation elsewhere. ([craigslist][1])
@@ -182,7 +192,7 @@ Use **layered matching** and keep it explainable:
   * university/medical housing boards that are public
 * **Discovery**:
 
-  * “site search” queries (Google/Bing) for:
+* “site search” queries (via Firecrawl Search) for:
     `("San Francisco" OR "SF") (apartments|rentals|availability) (property management|leasing)`
   * then queue candidate domains for a **policy check** (robots + ToS review)
 * **Traversal**:
@@ -226,8 +236,8 @@ Use **layered matching** and keep it explainable:
 
 ### 4) Compliance guardrails (critical)
 
-* For each domain, store `PolicyStatus = allowed_crawl | disallowed | partner_only`.
-* Block Firecrawl jobs for any `disallowed` domain (and instead route to “manual/alerts” workflows).
+* For each domain, store `PolicyStatus = crawl_allowed | manual_only | partner_required | unknown`.
+* Block Firecrawl jobs for any non-`crawl_allowed` domain (and instead route to manual workflows).
 * Never implement bypasses (CAPTCHA, paywalls, login walls).
 
 ---

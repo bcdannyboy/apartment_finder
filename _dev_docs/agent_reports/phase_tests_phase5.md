@@ -1,5 +1,10 @@
 # Phase 5 Test Plan - Geo and Commute Enrichment
 
+## References
+- architecture_geo_commute.md
+- architecture_compliance_enforcement.md
+
+
 ## Scope
 - Validate geocoding, routing, and commute enrichment for Phase 5.
 - Enforce local-only operation and licensing constraints.

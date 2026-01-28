@@ -1,5 +1,11 @@
 # Phase 6 Test Plan (Retrieval, Ranking, SearchSpec Parser, API)
 
+## References
+- architecture_searchspec.md
+- architecture_retrieval.md
+- architecture_api_contracts.md
+
+
 ## Purpose and scope
 - Validate Phase 6 search correctness, safety, and API stability for retrieval, ranking, SearchSpec parsing, and search responses.
 - Ensure deterministic behavior for fixed inputs and seed sets.

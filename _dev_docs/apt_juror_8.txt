@@ -1,3 +1,13 @@
+STATUS: Non-authoritative research notes. Superseded where conflicts with architecture_source_of_truth.md and architecture_decisions_and_naming.md.
+
+Overrides:
+- Paid services limited to OpenAI and Firecrawl.
+- Retrieval uses Postgres FTS + pgvector only.
+- Extraction is centralized in Extraction Service; connectors do not extract.
+- Manual-only sources are ImportTask only; no automated crawling.
+- Geo and routing are local-only (Pelias, Nominatim fallback, OTP, Valhalla; OSRM secondary).
+- Alerts are local notifications or SMTP only.
+
 Continuous Apartment‑Listing Discovery System
 Design
 This  proposal  describes  a  continuous  discovery  system  for  a  personal  apartment‑hunting  tool  serving
@@ -55,11 +65,11 @@ Components
 Scheduler Service  – central brain that continuously decides what to crawl next. It maintains
 per‑source metadata (last crawled time, historical change rate, failure counts) and uses dynamic
 recrawl policies.
-Queues  – separate queues for high‑velocity sources (Craigslist, Facebook Marketplace, etc.) and
+Queues  – separate queues for high‑velocity crawl_allowed sources and
 slower property‑management sites. A special radar  queue handles user‑defined high‑priority queries
 or neighbourhoods.
-Workers  – stateless fetchers (async tasks or serverless functions) that pop URLs from queues, fetch
-pages using Firecrawl  or a headless browser , enforce politeness, handle retries/exponential
+Workers  – stateless fetchers (async tasks) that pop URLs from queues, fetch
+pages using Firecrawl , enforce politeness, handle retries/exponential
 back‑off, and push results to parsing.
 Firecrawl/Fetch Layer  – interacts with Firecrawl API (or built‑in fetcher) to request pages. It sets 
 changeTracking  and markdown  formats to let Firecrawl compare current pages to previous
@@ -97,7 +107,7 @@ Priority scoring  – Each URL or source gets a score based on importance and li
 Use signals like:
 Historical change frequency  – pages that change often should be revisited sooner . Track
 last‑modified times or Firecrawl’s previousScrapeAt  and adapt.
-Source velocity  – classify sources as high‑velocity  (e.g., Craigslist, Zillow, Facebook groups) or slow
+Source velocity  – classify sources as high‑velocity  (crawl_allowed only) or slow
 (property‑management sites). High‑velocity sources receive shorter crawl intervals (minutes or
 hours). Slower sources might be recrawled daily or weekly.
 User interest  – if many users watch a neighbourhood or a price band, increase priority for listings in
@@ -192,10 +202,9 @@ if the  freshness score  for a high‑velocity source exceeds 3 hours, an aler
 cadence.
 E) MVP (2‑week) vs ultimate (2–3‑month) roadmap
 Minimal viable product (≈2 weeks)
-Scope  – Focus on a handful of high‑velocity sources (e.g., Craigslist SF apartments, Zillow, a couple of
-property‑management sites). Ignore dynamic rendering and anti‑bot circumvention for now.
-Tech stack  – Use a serverless or simple queue/worker architecture (e.g., cron‑based scheduler ,
-Firecrawl API) running on one machine. Store listings and change history in a relational DB (SQLite/
+Scope  – Focus on a handful of high‑velocity crawl_allowed sources (property‑management sites).
+Ignore dynamic rendering and anti‑bot circumvention for now.
+Tech stack  – Use a local queue/worker architecture (Redis + RQ, Firecrawl API) running on one machine. Store listings and change history in a relational DB (SQLite/
 PostgreSQL). Build a minimal web UI to show current listings and change logs.
 Scheduling  – Hard‑coded crawl intervals: high‑velocity sources every 30 min, slower sources once
 daily. Basic deduplication using a Bloom filter . Use Firecrawl’s changeTracking  to detect new/
@@ -208,8 +217,8 @@ time since last crawl. Use console logs or a lightweight dashboard.
 Batch geocoding  – Geocode addresses nightly using a bulk geocoding API; store lat/long for
 mapping. Perform route distance calculations offline.
 Ultimate system (≈2–3 months)
-Scalable architecture  – Deploy the Scheduler , Workers, and Storage as microservices on Kubernetes
-or serverless (AWS Lambda). Use distributed message queues (Kafka/SQS). Support thousands of
+Scalable architecture  – Deploy the Scheduler , Workers, and Storage as local services.
+Use Redis queues. Support thousands of
 URLs per minute.
 Sophisticated scheduling  – Implement dynamic scoring based on historical change frequency, user
 interest signals, and error rates. Use machine‑learning models to predict when a listing is likely to
@@ -249,7 +258,7 @@ Observability  – Implement comprehensive dashboards with coverage, freshness, 
 rate, error budgets, and queue metrics. Use logs and traces to debug failures. Provide
 per‑neighbourhood/price band coverage heatmaps to identify holes.
 User experience  – Build a rich front‑end with search filters, map view, price history charts, and alert
-preferences. Use asynchronous notifications (email, SMS, push) triggered by the Notification Engine
+preferences. Use asynchronous notifications (local notifications or SMTP email) triggered by the Notification Engine
 when new matches appear .
 Practical cost/performance tactics
 Despite an unlimited budget, good engineering practices help reduce latency and cost:

@@ -1,5 +1,13 @@
 # Phase 1 Test Plan (Core Data Contracts and Policy Gate)
 
+## References
+- architecture_decisions_and_naming.md
+- architecture_schema.md
+- architecture_evidence.md
+- architecture_api_contracts.md
+- architecture_compliance_enforcement.md
+
+
 ## Overview
 - Goal: validate Phase 1 core data contracts, Policy Gate decisions, Snapshot Store behavior, and evidence provenance under strict compliance gating.
 - Constraints: local-first execution, services bind to localhost, only paid services are Firecrawl and OpenAI, Python core services, no login automation, no CAPTCHA bypass, and no paywall circumvention.

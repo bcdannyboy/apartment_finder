@@ -1,141 +1,294 @@
-# Apartment Finder High-Level Component Spec
+# Apartment Finder High-Level Component Spec (Verbose)
 
-This document defines the major components/modules, their responsibilities, interfaces, and data flow. It is intended to guide implementation planning and task allocation.
+## Purpose
+This document expands the component catalog into explicit responsibilities, inputs, outputs, and invariants. It complements the phase contracts by focusing on module boundaries and data flow.
 
----
+## Authoritative companion docs
+- architecture_decisions_and_naming.md
+- architecture_schema.md
+- architecture_evidence.md
+- architecture_api_contracts.md
+- architecture_searchspec.md
+- architecture_tasks_queue.md
+- architecture_retrieval.md
+- architecture_geo_commute.md
+- architecture_compliance_enforcement.md
+- architecture_traceability_matrix.md
 
-## 1) Services/modules and responsibilities
+## Global constraints and invariants
+- Local-first system; Docker OK; services bind to localhost.
+- Only paid services: Firecrawl and OpenAI.
+- Compliance gating is mandatory before any automated fetch.
+- DocumentSnapshots are immutable; Facts require evidence and confidence for all non-null values.
+- Evidence is stored in a normalized Evidence table linked to Facts.
+- Python is the core language.
 
-### 1.1 Source Registry and Policy Gate
-- Stores per-domain policy classification and compliance metadata.
-- Provides a single policy-check API to all acquisition tasks.
-- Blocks any task if policy is not `crawl_allowed` or `manual_only` (for imports).
+## Component catalog
 
-### 1.2 Acquisition Orchestrator
-- Plans searches and sweep grids.
-- Generates Search/Map/Crawl/Scrape/Import tasks.
-- Enforces per-domain budgets and cadence.
+### 1) Source Registry and Policy Gate
+Responsibilities:
+- Store source metadata and compliance policy records.
+- Expose a decision API for acquisition tasks.
+- Enforce allowed_operations by policy_status.
 
-### 1.3 Scheduler / Queue / Workers
-- Runs per-domain queues with politeness limits.
-- Applies adaptive cadence, retries, and backoff.
-- Executes acquisition tasks and emits snapshots + status.
+Inputs:
+- Source definitions (name, base_domains, kind).
+- Robots.txt and ToS metadata (stored as snapshots).
 
-### 1.4 Firecrawl Adapter
-- Single module that wraps Firecrawl API calls.
-- Enforces standard formats, changeTracking, caching.
-- Logs request metadata for audit.
+Outputs:
+- Policy decisions (allow/deny with reason).
+- Versioned policy records for audit.
 
-### 1.5 Snapshot Store
-- Immutable storage of raw HTML, markdown, screenshots, PDFs.
-- Provides references for provenance and reprocessing.
+Invariants:
+- manual_only sources permit ImportTask only.
+- unknown and partner_required deny automation.
 
-### 1.6 Extraction Service
-- Deterministic parser for known fields.
-- OpenAI Structured Outputs extraction for full schema.
-- Produces SourceObservation records with evidence.
+Interfaces:
+- Policy Gate API contract (see phase contracts).
 
-### 1.7 Normalization Service
-- Address normalization (libpostal + USPS unit designators).
-- Standardizes currencies, dates, lease terms, fees, amenities.
+### 2) Acquisition Orchestrator
+Responsibilities:
+- Translate SearchSpecs and seed lists into tasks.
+- Schedule discovery sweeps and targeted crawls.
+- Create tasks that are policy-compliant by design.
 
-### 1.8 Dedupe / Entity Resolution Service
-- Blocking + scoring pipeline.
-- Clustering into canonical Building/Unit/Listing.
-- Merge policy: source trust + recency + confidence.
+Inputs:
+- SearchSpecs; manual seed lists; crawl stats.
+- Source Registry and Policy Gate.
 
-### 1.9 Geo/Commute Service
-- Local geocoding (Pelias primary; Nominatim optional).
-- OTP routing for transit; Valhalla for walk/bike/drive (OSRM optional).
-- Isochrone precompute and commute caching.
+Outputs:
+- SearchTask, MapTask, CrawlTask, ScrapeTask, ImportTask.
 
-### 1.10 Ranking Service
-- Hard filters -> fast scoring -> LLM rerank -> diversity rerank.
-- Generates explanations and missing-info prompts.
+Invariants:
+- No automated tasks for unknown or manual_only sources.
+- Discovery outputs create new sources with policy_status = unknown until reviewed.
 
-### 1.11 Alert Service
-- Matches change events to SearchSpecs.
-- Sends local notifications or SMTP email digests.
+### 3) Scheduler / Queue / Workers
+Responsibilities:
+- Enforce per-domain politeness and rate limits.
+- Retry on transient errors with backoff.
+- Execute acquisition tasks and emit snapshots.
+- Redis + RQ for queueing and worker orchestration.
 
-### 1.12 API + UI + SearchSpec Parser
+Inputs:
+- Task records; rate_limits.
+
+Outputs:
+- DocumentSnapshots and execution status events.
+
+Invariants:
+- Per-domain queues enforced; rate limits never exceeded.
+- No login automation or CAPTCHA bypass.
+
+### 4) Firecrawl Adapter
+Responsibilities:
+- Wrap Firecrawl Search, Map, Crawl, Scrape.
+- Apply standard formats and changeTracking rules.
+- Record request metadata for audit.
+
+Inputs:
+- Task payloads and adapter config.
+
+Outputs:
+- Raw artifacts and Firecrawl metadata for DocumentSnapshot.
+
+Invariants:
+- changeTracking requires markdown plus changeTracking object.
+- content_hash fallback is required if changeTracking missing.
+
+### 5) Snapshot Store
+Responsibilities:
+- Persist immutable raw artifacts.
+- Provide references for downstream extraction and reprocessing.
+
+Inputs:
+- Raw artifacts (html, markdown, screenshots, pdfs).
+
+Outputs:
+- raw_refs and DocumentSnapshot metadata.
+
+Invariants:
+- Artifacts are immutable; new fetch creates a new snapshot_id.
+
+### 6) Extraction Service
+Responsibilities:
+- Deterministic parsing and OpenAI Structured Outputs.
+- Produce SourceObservations and Facts with evidence.
+
+Inputs:
+- DocumentSnapshots and raw artifacts.
+
+Outputs:
+- SourceObservations, Facts, validation_report.
+
+Invariants:
+- All non-null fields must have evidence and confidence.
+- Ambiguous fields return multiple candidates, not guesses.
+
+### 7) Normalization Service
+Responsibilities:
+- Normalize address, unit designators, currency, dates, lease terms, fees, amenities.
+
+Inputs:
+- Facts and SourceObservations.
+
+Outputs:
+- Normalized Facts and standardized values.
+
+Invariants:
+- Raw values are preserved alongside normalized values.
+
+### 8) Dedupe / Entity Resolution Service
+Responsibilities:
+- Blocking, scoring, clustering into canonical entities.
+- Merge policy based on source trust, recency, confidence.
+
+Inputs:
+- Normalized Facts and SourceObservations.
+
+Outputs:
+- Canonical Building, Unit, Listing and ListingChange records.
+
+Invariants:
+- Conflicts retained with provenance; no deletion of Facts.
+
+### 9) Geo / Commute Service (local-only)
+Responsibilities:
+- Local geocoding, routing, and commute caching.
+- Load open data layers into PostGIS.
+
+Inputs:
+- Canonical listings and normalized addresses.
+- OSM and DataSF layers; GTFS feeds.
+
+Outputs:
+- Geocode Facts with precision and confidence.
+- Commute cache keyed by (origin_h3, anchor_id, mode, time_bucket).
+
+Invariants:
+- No paid geocoding or routing APIs.
+- 511 GTFS stored locally and not redistributed.
+- Walk/bike/drive routing uses Valhalla primary; OSRM may be used as a secondary option.
+
+### 10) Ranking Service
+Responsibilities:
+- Candidate retrieval and ranking pipeline.
+- Generate explanations, missing-info prompts, near-miss pool.
+
+Inputs:
+- SearchSpecs; canonical listings; Facts; commute data.
+
+Outputs:
+- Ordered results with explanation metadata.
+
+Invariants:
+- LLM rerank uses only structured fields and evidence.
+- Diversity caps enforced by building, neighborhood, source.
+
+### 11) Alert Service
+Responsibilities:
+- Match ListingChange events to SearchSpecs.
+- Dispatch local notifications or SMTP email.
+
+Inputs:
+- ListingChange events; SearchSpecs.
+
+Outputs:
+- Alert records and dispatch logs.
+
+Invariants:
+- No paid SMS or external messaging APIs.
+
+### 12) API + UI + SearchSpec Parser
+Responsibilities:
 - FastAPI endpoints for search, listing detail, compare, alerts.
-- Local web UI (map/list, compare, near-miss explorer).
-- NL input -> SearchSpec parsing, validation, and storage.
+- SearchSpec parser from NL input.
+- Local web UI (full SPA) for map/list, detail, compare, near-miss, alerts.
 
-### 1.13 Evaluation and QA
-- Golden set runner.
-- Regression tests for extraction, dedupe, ranking.
-- Coverage and freshness dashboards.
+Inputs:
+- SearchSpecs; ranking outputs; listing data.
 
----
+Outputs:
+- API responses and UI views.
 
-## 2) Interfaces and key data flows
+Invariants:
+- UI uses API only; no direct DB access.
 
-### 2.1 DocumentSnapshot flow
-1. Acquisition task produces raw snapshot.
-2. Snapshot stored in object store; metadata in `document_snapshots` table.
-3. Extraction Service produces `source_observations` linked to snapshot.
+### 13) Evaluation and QA
+Responsibilities:
+- Golden sets, regression tests, dashboards.
 
-### 2.2 Canonicalization flow
-1. Normalization applies to observations.
-2. Dedupe service clusters observations into canonical entities.
-3. Canonical `listing` records updated and changes logged.
+Inputs:
+- Frozen snapshots; canonical data; ranking outputs.
 
-### 2.3 Ranking flow
-1. User NL query -> SearchSpec.
-2. Hard filters applied in SQL.
-3. Fast scorer computes utility.
-4. LLM rerank top-N.
-5. Diversity rerank and final result set returned.
+Outputs:
+- Metrics reports and regression gates.
 
-### 2.4 Alert flow
-1. Listing change event created.
-2. Alert service checks SearchSpecs.
-3. Alerts emitted to email or local notifications.
+Invariants:
+- Evaluation runs are deterministic for fixed inputs.
 
----
+## Key data flows
 
-## 3) Storage schema outline
+### DocumentSnapshot flow
+1) Acquisition task produces raw snapshot.
+2) Snapshot stored in object store; metadata in document_snapshots.
+3) Extraction Service produces SourceObservations linked to snapshot_id.
 
-### Core tables
-- `sources`
-- `source_policies`
-- `document_snapshots`
-- `source_observations`
-- `buildings`
-- `units`
-- `listings`
-- `listing_changes`
-- `facts` (required normalized field-level provenance)
-- `search_specs`
-- `matches`
-- `alerts`
+### Canonicalization flow
+1) Normalization applies to Facts and SourceObservations.
+2) Dedupe clusters observations into canonical entities.
+3) ListingChange records record canonical updates.
 
-### Key indexes
-- `listings` on price, beds, baths, neighborhood
-- `listings` on geometry (PostGIS)
-- `document_snapshots` on url, content_hash
-- `facts` on field_path
-- `source_observations` on source_id, snapshot_id
+### Ranking flow
+1) User NL query -> SearchSpec.
+2) Hard filters applied via SQL and confidence checks.
+3) Fast scoring, LLM rerank, diversity rerank.
+4) Explanations and near-miss pool returned.
 
----
+### Alert flow
+1) ListingChange emitted.
+2) Alert Service matches SearchSpecs.
+3) Alerts delivered via local notifications or SMTP.
 
-## 4) CLI / orchestration and runtime workflow
+## Storage schema outline (expanded)
+Core tables:
+- sources
+- source_policies
+- document_snapshots
+- source_observations
+- facts
+- evidence
+- fact_evidence
+- buildings
+- units
+- listings
+- listing_changes
+- search_specs
+- matches
+- alerts
 
-### CLI commands (initial plan)
-- `apf ingest --source <id>`: run acquisition tasks.
-- `apf extract --since <ts>`: extract new snapshots.
-- `apf normalize --since <ts>`: normalize extracted fields.
-- `apf dedupe --since <ts>`: run entity resolution.
-- `apf geo-sync`: update geocodes and commute caches.
-- `apf rank --spec <id>`: run ranking pipeline.
-- `apf alerts`: send alerts for new/changed listings.
-- `apf eval`: run golden set regression tests.
+Key indexes:
+- listings on price, beds, baths, neighborhood
+- listings on geometry (PostGIS)
+- document_snapshots on url, content_hash
+- facts on field_path
+- source_observations on snapshot_id, source_id
 
-### Runtime workflow
-1. Scheduler generates tasks.
-2. Workers fetch snapshots (Firecrawl/manual).
-3. Extraction + normalization run on new snapshots.
-4. Dedupe updates canonical listings.
-5. Geo/commute service enriches listings.
-6. Ranking and alerts update UI and notifications.
+## CLI and runtime workflow
+The CLI provides local orchestration without external dependencies.
+- apf ingest --source <id>
+- apf extract --since <ts>
+- apf normalize --since <ts>
+- apf dedupe --since <ts>
+- apf geo-sync
+- apf rank --spec <id>
+- apf alerts
+- apf eval
+
+Runtime workflow:
+1) Scheduler generates tasks.
+2) Workers fetch snapshots (Firecrawl or manual).
+3) Extraction and normalization run on new snapshots.
+4) Dedupe updates canonical listings and change history.
+5) Geo/commute service enriches listings.
+6) Ranking and alerts update UI and notifications.

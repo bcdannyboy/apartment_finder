@@ -1,5 +1,13 @@
 # Phase Integration Tests
 
+## References
+- architecture_compliance_enforcement.md
+- architecture_api_contracts.md
+- architecture_searchspec.md
+- architecture_retrieval.md
+- architecture_geo_commute.md
+
+
 ## Scope
 - Validate cross-phase integration from acquisition and import through UI delivery.
 - Enforce policy and compliance gates at every entry point.

@@ -54,6 +54,13 @@
 ## Purpose
 Define cross-phase service contracts and the minimum guarantees each phase provides to the next.
 
+## References
+- architecture_api_contracts.md
+- architecture_schema.md
+- architecture_evidence.md
+- architecture_searchspec.md
+- architecture_tasks_queue.md
+
 ## Contract Surfaces
 - Policy Gate API
 - Snapshot Store API

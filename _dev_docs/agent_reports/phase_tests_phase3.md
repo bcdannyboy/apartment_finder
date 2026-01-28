@@ -1,5 +1,10 @@
 # Phase 3 Tests: Extraction and Normalization
 
+## References
+- architecture_schema.md
+- architecture_evidence.md
+
+
 ## Scope
 - Extraction Service deterministic pre-extraction (JSON-LD and regex).
 - Structured Outputs extraction with schema validation.

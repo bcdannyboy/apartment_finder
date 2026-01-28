@@ -1,3 +1,13 @@
+STATUS: Non-authoritative research notes. Superseded where conflicts with architecture_source_of_truth.md and architecture_decisions_and_naming.md.
+
+Overrides:
+- Paid services limited to OpenAI and Firecrawl.
+- Retrieval uses Postgres FTS + pgvector only.
+- Extraction is centralized in Extraction Service; connectors do not extract.
+- Manual-only sources are ImportTask only; no automated crawling.
+- Geo and routing are local-only (Pelias, Nominatim fallback, OTP, Valhalla; OSRM secondary).
+- Alerts are local notifications or SMTP only.
+
 ## Flow map
 
 ```text
@@ -423,7 +433,7 @@ NN/g recommends giving users ways to steer recommendations and provide feedback.
 * Anchors: user pins (Work, Caltrain, etc.)
 * Isochrones: show reachable area polygons for time windows (e.g., 15/25/35 min)
 
-  * You can implement via Mapbox Isochrone API (returns reachable regions as contours/polygons). ([Mapbox][11])
+  * Implement via Valhalla isochrones (local only).
 * Neighborhood overlays:
 
   * boundaries + “vibe tags” (user-labeled)
@@ -477,7 +487,7 @@ NN/g recommends giving users ways to steer recommendations and provide feedback.
 **Anti-spam mechanics**
 
 * Bundle by neighborhood/time window
-* Rate limit (max N push/day)
+* Rate limit (max N notifications/day)
 * “Snooze this category for 7 days”
 * Every notification has a **one-tap action**: Save/Hide/Tune profile
 
@@ -510,9 +520,9 @@ NN/g recommends giving users ways to steer recommendations and provide feedback.
 **Tech approach (recommended for MVP)**
 
 * **Web app (Next.js/React) + responsive**: fastest iteration, easy sharing, works across devices; maps + split view are strongest on desktop.
-* **Map**: Mapbox GL JS + Isochrone API. ([Mapbox][11])
-* **Data**: normalize listing schema + dedupe; store geo in PostGIS; index in vector DB for “more like this”.
-* **Commute**: start with isochrones (good enough for “where could I live?”). Upgrade later to time-dependent routing for true transit at 8:30am.
+* **Map**: MapLibre GL JS + local tiles + Valhalla isochrones.
+* **Data**: normalize listing schema + dedupe; store geo in PostGIS; index with pgvector for “more like this”.
+* **Commute**: start with Valhalla isochrones; use OTP for time-dependent transit routing.
 * **Explainability**: rule-based “reason chips” from structured extraction + model output; show diff whenever spec changes (trust anchor).
 
 ### Ultimate (the “this is unfair” apartment hunter)
@@ -548,12 +558,12 @@ NN/g recommends giving users ways to steer recommendations and provide feedback.
 
 **Notifications that feel like a concierge**
 
-* Multi-channel (push + SMS for urgent, email for digest)
+* Local notifications or SMTP email
 * “Explain what changed” notifications
 * Smart bundling:
 
   * “2 perfect matches in Noe; 1 near-miss in Mission (fails parking)”
-* Alert fatigue defenses (strict caps, snoozes, and only high-signal pushes)
+* Alert fatigue defenses (strict caps, snoozes, and only high-signal notifications)
 
 ---
 

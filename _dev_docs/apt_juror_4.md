@@ -1,81 +1,41 @@
+STATUS: Non-authoritative research notes. Superseded where conflicts with architecture_source_of_truth.md and architecture_decisions_and_naming.md.
+
+Overrides:
+- Paid services limited to OpenAI and Firecrawl.
+- Retrieval uses Postgres FTS + pgvector only.
+- Extraction is centralized in Extraction Service; connectors do not extract.
+- Manual-only sources are ImportTask only; no automated crawling.
+- Geo and routing are local-only (Pelias, Nominatim fallback, OTP, Valhalla; OSRM secondary).
+- Alerts are local notifications or SMTP only.
+
 ## API/dataset recommendations (cited)
 
-### Geocoding (robust, “partial address” tolerant)
+### Geocoding (local-only, robust with partial addresses)
 
-**Recommended stack (best overall for SF apartment listings):**
+**Recommended stack:**
 
-* **Primary (high-quality + caching-friendly): Mapbox Geocoding API**
-
-  * You can explicitly choose **Permanent vs Temporary** storage; **Permanent results can be cached/stored indefinitely** (Temporary cannot). ([Mapbox][1])
-  * Good fit if you want to build your own map UX (Mapbox/OSM) without Google display constraints.
-
-* **Secondary “truth check” (often best raw accuracy): Google Geocoding API**
-
-  * Useful for resolving messy/partial addresses, business names, and new buildings—but note policy constraints: caching/storage is **generally restricted** (except **place IDs can be stored indefinitely**), and **Geocoding results displayed on a map must be shown on a Google Map**. ([Google for Developers][2])
-  * Practical use: run it as a *validation / disambiguation step* and store only place IDs + your own derived features.
-
-* **Local/offline/fully-controllable: Pelias (self-host)**
-
-  * Open-source geocoder that turns addresses/place names into coordinates using open data. Great when you want “unlimited” internal queries and custom SF-specific tuning (parcel/building-aware). ([pelias.io][3])
-
-**Nice-to-have / fallback:**
-
-* **Nominatim (self-host recommended)**
-
-  * Nominatim powers OSM’s geocoding; but the **public API has limited capacity** and you’re expected to be gentle—so for an apartment-hunting tool at scale, self-host or use a paid host. ([operations.osmfoundation.org][4])
-* **OpenCage (hosted “open data” geocoding)**
-
-  * Geocoding API based on open data via REST; useful as a cost-effective first pass before expensive providers. ([opencagedata.com][5])
+* **Primary: Pelias (self-hosted)**
+  * Open-source geocoder for unlimited local queries and SF-specific tuning.
+* **Fallback: Nominatim (self-hosted)**
+  * Use only as a local fallback when Pelias confidence is low.
 
 ---
 
 ### Routing & travel times (walk/bike/transit + time-of-day)
 
-You’ll likely want **two layers**: (1) a high-quality commercial estimator, plus (2) an engine you can control (for bulk scoring + transparency).
-
-**Time-of-day transit (commercial):**
-
-* **Google Routes/Directions (Transit)**
-
-  * Transit routing supports specifying **departure_time or arrival_time** (time-of-day commute scoring). ([Google for Developers][6])
-  * Also has a **Compute Route Matrix** endpoint for batching. ([Google for Developers][7])
-  * Caveat: Google platform terms/policies can constrain caching and how you display results. ([Google for Developers][2])
-
-* **TravelTime (time-based search at scale)**
-
-  * Strong for “**search/sort by travel time**” products: fast **time-map (isochrones)** + **time-filter (matrix)** workflows. ([TravelTime API Documentation][8])
-  * Practical advantage: purpose-built for *filtering* large candidate sets by journey time, not just point-to-point directions.
-
-**Self-host / full control (especially for advanced filters & explainability):**
+**Local-only stack:**
 
 * **OpenTripPlanner (OTP) for transit**
-
-  * Open-source multimodal trip planning built to use **OpenStreetMap + GTFS**, and can consume **GTFS-Realtime** for delays/cancellations. ([OpenStreetMap][9])
-  * This is the best path if you want “your own Google Transit” behavior and reproducible scoring logic.
-
-* **Valhalla for walk/bike/driving (plus matrices + isochrones)**
-
-  * Open-source routing engine on OSM; includes **time+distance matrix**, **isochrones**, and **elevation sampling**. ([GitHub][10])
-
-* **GraphHopper (commercial APIs + open-source core)**
-
-  * Offers isochrone + other routing capabilities; good option if you want a managed service built on open-source routing. ([GraphHopper Directions API][11])
-
-**Batch routing for walk/bike/driving:**
-
-* **Mapbox Matrix API** to efficiently compute travel times/distances among many points (very useful for scoring many listings vs many anchors). ([Mapbox][12])
+  * Multimodal trip planning using OSM + GTFS + GTFS-RT.
+* **Valhalla for walk/bike/driving**
+  * Local routing with matrix and isochrone support.
 
 ---
 
-### Isochrones (15/30/45 min “within reach” polygons)
+### Isochrones (reachable-area polygons)
 
-You’ll want **isochrones for each anchor + commute window** so you can instantly filter the map and avoid per-listing routing calls.
-
-Best-in-class options:
-
-* **Mapbox Isochrone API**: returns reachable regions as polygon/line contours; supports **walking/cycling/driving**, typically up to **60 minutes**. ([Mapbox][13])
-* **TravelTime time-map**: isochrones designed for high-performance “reachable area” search. ([TravelTime API Documentation][8])
-* **openrouteservice Isochrones**: Isochrone service supports time/distance analyses and returns **GeoJSON** features. ([giscience.github.io][14])
+* **Valhalla isochrones** for walk/bike/drive.
+* **OTP isochrones** for transit if needed.
 
 ---
 
@@ -138,7 +98,7 @@ These are the datasets I’d treat as “first-class signals” in your GeoScore
 **POIs (coffee/gym/grocery/etc.)**
 
 * **OpenStreetMap via Overpass API** for free/complete POI coverage you can store locally. ([OpenStreetMap][29])
-* (Optional enrichment) **Foursquare Places** and/or **Yelp Fusion** for richer categories/reviews and “open-now” signals. ([docs.foursquare.com][30])
+* (Optional enrichment) **OSM POIs (local)** for categories and open data attributes.
 
 ---
 
@@ -175,10 +135,10 @@ Separate the system into:
   * If listing includes cross streets or parcel/APN hints, try to resolve using:
 
     * Streets centerlines (CNN), Parcels, Building Footprints. ([Data.gov][16])
-* Stage B: **Primary geocoder** (Mapbox Permanent)
+* Stage B: **Primary geocoder** (Pelias, self-hosted)
 
-  * Store result + confidence + feature type. ([Mapbox][1])
-* Stage C: **Secondary resolver** (Google / OpenCage / Pelias) if confidence low
+  * Store result + confidence + feature type.
+* Stage C: **Secondary resolver** (Nominatim, self-hosted) if confidence low
 
   * Use to disambiguate and then snap to the nearest building footprint centroid.
   * Keep a **geocode_confidence** scalar and a **geocode_source** enum.
@@ -192,9 +152,7 @@ Separate the system into:
 
 **5) Travel time computation (batch + cache-first)**
 
-* Use **matrix APIs** whenever possible:
-
-  * E.g., Google Compute Route Matrix supports up to hundreds of route elements per request; TravelTime supports very large “time filter” searches; Mapbox Matrix for walk/bike/driving. ([Google for Developers][7])
+* Use **Valhalla matrix** locally whenever possible.
 * Time-of-day strategy:
 
   * Define *buckets* (weekday AM peak, midday, weekday PM peak, weekend).
@@ -214,9 +172,8 @@ Separate the system into:
 
 * For each anchor + time bucket + mode, compute 15/30/45-minute polygons:
 
-  * Mapbox Isochrones (walk/bike/driving) ([Mapbox][13])
-  * TravelTime time-map (excellent for time-based search) ([TravelTime API Documentation][8])
-  * ORS Isochrones (GeoJSON) ([giscience.github.io][14])
+  * Valhalla isochrones (walk/bike/driving)
+  * OTP isochrones (transit)
 * Store polygons and also **materialize listing membership**:
 
   * listing_id → boolean flags: `within_15m_work_transit_am`, etc.
@@ -247,8 +204,8 @@ Separate the system into:
 * Persist all features and scores into:
 
   * **PostGIS** for spatial queries/joins
-  * **Search index** (OpenSearch/Elasticsearch) for text filters + faceting
-  * Optional: **Vector DB** for semantic “vibe queries” (LLM-generated embeddings)
+  * **Postgres FTS** for text filters + faceting
+  * **pgvector** for semantic “vibe queries” (LLM-generated embeddings)
 
 **9) Explainability store**
 
@@ -486,15 +443,15 @@ GeoScore = 0.45(77.5)+0.25(84.3)+0.10(85)+0.10(80)+0.07(40)+0.03(70)=77.4
 | **Ambiguous / partial address** (“near Dolores Park”, cross streets only) | Geocoder returns low confidence or multiple candidates                 | Generate candidates using street centerlines/parcels/building footprints; ask user to confirm via pin drop; store confidence score ([Data.gov][16]) | Show “Approximate location” badge + prompt: “Confirm building on map for accurate commute times.” |
 | **311 data has missing lat/lon, duplicates, reporting bias**              | Missing coordinates, spikes, repeated cases                            | Use smoothing + rolling windows; treat as proxy only; blend with other signals (traffic corridors, zoning) ([SF Digital Services][19])              | Explain: “Noise score is a proxy based on nearby reports; may under/overestimate.”                |
 | **Transit real-time feed gaps** (GTFS-RT down or partial)                 | Feed freshness checks, missing vehicle positions/trip updates          | Fall back to scheduled GTFS-only “typical” times; degrade reliability score                                                                         | “Real-time not available; showing typical commute time.” ([511.org][15])                          |
-| **API quota / cost blowups for routing**                                  | Rising latency, rate-limit errors, spend anomalies                     | Cache by H3 + time bucket; prefer matrix endpoints; batch jobs; backoff + provider failover ([Google for Developers][7])                            | Keep UI responsive with cached values + “refresh estimates” button                                |
+| **Routing capacity spikes**                                               | Rising latency, queue backlog                                           | Cache by H3 + time bucket; prefer matrix endpoints; batch jobs; scale local workers                                                              | Keep UI responsive with cached values + “refresh estimates” button                                |
 | **Microclimate proxy too coarse** (sunny/fog varies block-to-block)       | High uncertainty near gradients (west/east edges), conflicting signals | Use multiple layers (PRISM + fog index + distance-to-coast + elevation); expose uncertainty                                                         | “Sunny score: medium confidence” with a tooltip explaining inputs ([Prism Group][27])             |
 | **Hilliness differs by route, not just location**                         | Large variance between “local slope” vs “route elevation gain”         | Compute both: neighborhood slope + route elevation gain (Valhalla/DEM); let user weight ([GitHub][10])                                              | “Bike score assumes flattest route; switch to ‘avoid hills’ routing.”                             |
 | **Dataset boundaries ≠ “real” neighborhoods**                             | User confusion (“this isn’t my neighborhood”)                          | Use Analysis Neighborhoods only for labels; prefer lat/lon search + user-drawn polygons ([San Francisco Data][24])                                  | Display: “Neighborhood label is for analysis; search uses exact location.”                        |
-| **Licensing/policy constraints (esp. Google)**                            | Policy review + automated compliance checks                            | Keep provider-specific caches/TTLs; avoid mixing restricted content with non-compliant map displays ([Google for Developers][2])                    | Transparent: “Some estimates provided by Provider X; details limited by terms.”                   |
+| **Open data licensing constraints (ODbL, DataSF terms)**                  | Policy review + automated compliance checks                            | Keep local datasets; retain required attribution; avoid redistribution                                                                            | Transparent: “Some layers are open-data derived; details limited by terms.”                       |
 
 ---
 
-If you want the “max quality + max freedom” configuration: **Mapbox (map+geocode permanent + walk/bike/driving) + OTP (transit with 511 GTFS/GTFS-RT) + TravelTime (fast isochrone/filtering layer)**, with SF open datasets powering the QoL proxies. That combination avoids most display/caching lock-in while still giving you very high commute fidelity and extremely fast “within X minutes” search.
+If you want the “max quality + max freedom” configuration: **Pelias (geocode) + OTP (transit with 511 GTFS/GTFS-RT) + Valhalla (walk/bike/drive + isochrones)**, with SF open datasets powering the QoL proxies. That combination keeps everything local and compliant.
 
 [1]: https://docs.mapbox.com/api/search/geocoding/ "https://docs.mapbox.com/api/search/geocoding/"
 [2]: https://developers.google.com/maps/documentation/geocoding/policies "https://developers.google.com/maps/documentation/geocoding/policies"

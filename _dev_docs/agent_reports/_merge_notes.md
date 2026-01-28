@@ -1,5 +1,7 @@
 # Merge Notes
 
+Status: Non-authoritative; superseded by architecture_source_of_truth.md and architecture_decisions_and_naming.md.
+
 ## Conflicts across reports
 - Paid services vs hard constraints: some juror/judge notes recommend Mapbox/Google geocoding, TravelTime/Mapbox matrices, OpenCage, and Twilio SMS, which violate the "only paid services: Firecrawl + OpenAI" rule.
 - Search backend split: apt_judge mentions OpenSearch and a separate vector DB, while core docs use Postgres + pgvector.
@@ -27,9 +29,9 @@
 - Reinforced manual-only list for restricted portals and blocked automation paths.
 
 ## Open questions
-1) Queue system choice (Redis/RQ vs Celery vs Postgres-based queue).
-2) Routing engine secondary option (run OSRM alongside Valhalla or Valhalla only).
-3) UI scope (minimal vs full SPA).
-4) Use of 511 GTFS feeds given licensing restrictions (local-only vs avoid 511 RT).
-5) Object storage (filesystem vs MinIO).
-6) Evidence storage shape (JSONB-only vs normalized FieldObservations table).
+1) Queue system choice: Redis + RQ.
+2) Routing engine secondary option: OSRM allowed as a secondary option alongside Valhalla.
+3) UI scope: full SPA.
+4) 511 GTFS: desired; local-only storage and no redistribution.
+5) Object storage: filesystem preferred.
+6) Evidence storage shape: must include normalized Evidence table with fact_evidence; additional structures allowed if they do not violate provenance requirements.

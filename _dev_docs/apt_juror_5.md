@@ -1,3 +1,13 @@
+STATUS: Non-authoritative research notes. Superseded where conflicts with architecture_source_of_truth.md and architecture_decisions_and_naming.md.
+
+Overrides:
+- Paid services limited to OpenAI and Firecrawl.
+- Retrieval uses Postgres FTS + pgvector only.
+- Extraction is centralized in Extraction Service; connectors do not extract.
+- Manual-only sources are ImportTask only; no automated crawling.
+- Geo and routing are local-only (Pelias, Nominatim fallback, OTP, Valhalla; OSRM secondary).
+- Alerts are local notifications or SMTP only.
+
 ## Metrics
 
 ### 1) Coverage proxies (accuracy + recall-focused)

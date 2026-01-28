@@ -1,5 +1,10 @@
 # Phase 4 Test Plan - Entity Resolution and Canonicalization
 
+## References
+- architecture_schema.md
+- architecture_evidence.md
+
+
 ## Scope
 - Entity resolution: blocking, pair scoring, clustering, and threshold band routing.
 - Canonicalization: canonical field selection, fact retention, and audit logging.

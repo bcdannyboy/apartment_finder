@@ -1,5 +1,12 @@
 # Phase 2 Test Plan - Acquisition Pipeline
 
+## References
+- architecture_decisions_and_naming.md
+- architecture_tasks_queue.md
+- architecture_api_contracts.md
+- architecture_compliance_enforcement.md
+
+
 ## Scope
 - Focus: acquisition pipeline from task creation through snapshot persistence and audit logging.
 - Components: Source Registry and Policy Gate, Acquisition Orchestrator, Scheduler/Queue/Workers, Firecrawl Adapter, Snapshot Store, Audit Logging.

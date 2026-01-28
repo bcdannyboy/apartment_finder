@@ -1,3 +1,13 @@
+STATUS: Non-authoritative research notes. Superseded where conflicts with architecture_source_of_truth.md and architecture_decisions_and_naming.md.
+
+Overrides:
+- Paid services limited to OpenAI and Firecrawl.
+- Retrieval uses Postgres FTS + pgvector only.
+- Extraction is centralized in Extraction Service; connectors do not extract.
+- Manual-only sources are ImportTask only; no automated crawling.
+- Geo and routing are local-only (Pelias, Nominatim fallback, OTP, Valhalla; OSRM secondary).
+- Alerts are local notifications or SMTP only.
+
 Agentic Orchestrator & NL Criteria Architect
 Overview
 Finding  an  apartment  in  a  competitive  housing  market  such  as  San   Francisco  requires  translating
@@ -177,9 +187,10 @@ connectors for each source
 (Craigslist, Zillow,
 Realtor .com, building
 management sites, etc.).
-Each agent handles login,
-pagination, error recovery
-and extraction.Execute search queries;
+Each agent handles pagination,
+error recovery and extraction.
+No login automation or CAPTCHA
+bypass.Execute search queries;
 parse listing data into a
 normalized schema
 (address, rent, bedrooms,
@@ -203,8 +214,8 @@ similarity on addresses/
 photos, and handle
 variations (suite numbers,
 abbreviations).Data‑cleaning
-libraries, geocoding
-APIs.2
+libraries, local geocoding
+(Pelias).2
 4
 Agent Role Responsibilities Tools/Methods
 Fact‑ValidatorValidates extracted facts
@@ -212,13 +223,14 @@ Fact‑ValidatorValidates extracted facts
 times, pet policy, parking
 availability). Cross‑checks
 with third‑party data
-sources (Google Maps API
-for commute time;
-municipal crime data for
+sources (local OTP/Valhalla
+commute calculations;
+municipal open data for
 safety).Compares claims against
-external APIs; flags
+local services; flags
 discrepancies or missing
-information.Maps API, crime/
+information.Local routing,
+crime/
 statistics APIs, noise
 maps, building
 records.
@@ -302,9 +314,9 @@ exploitation .
 The exploration budget can be weighted by user trade‑offs (e.g., allocate more budget to
 neighborhoods close to the commute anchor but still explore adjacent areas).
 Connector Execution
-Connector Agents execute queries on each platform. They handle pagination, login, CAPTCHAs (if
-legal), and scraping. They extract structured data (rent, address, bedrooms, square footage,
-description, photos) and store raw text for NLP.
+Connector Agents execute queries on each platform. They handle pagination and scraping only.
+No login automation or CAPTCHA bypass. They extract structured data (rent, address, bedrooms,
+square footage, description, photos) and store raw text for NLP.
 Errors (e.g., site unreachable) trigger retries; after multiple failures, the Planner reallocates budget
 to other sources.
 Normalization & Deduplication
@@ -314,7 +326,7 @@ information.
 Feature Extraction & Fact Validation
 NLP models extract features from descriptions (e.g., presence of “quiet”, “modern”, “no carpet”) and
 update the listing’s attribute vector .
-The Fact‑Validator uses external APIs to compute commute times to each anchor; calculates noise
+The Fact‑Validator uses local services to compute commute times to each anchor; calculates noise
 proxies (distance from highways and expected dB levels; noise guidebook lists near‑freeway noise
 around 60 dB ); checks pet policies and parking using building data; fetches crime statistics.
 Scoring & Ranking

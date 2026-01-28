@@ -1,3 +1,13 @@
+STATUS: Non-authoritative research notes. Superseded where conflicts with architecture_source_of_truth.md and architecture_decisions_and_naming.md.
+
+Overrides:
+- Paid services limited to OpenAI and Firecrawl.
+- Retrieval uses Postgres FTS + pgvector only.
+- Extraction is centralized in Extraction Service; connectors do not extract.
+- Manual-only sources are ImportTask only; no automated crawling.
+- Geo and routing are local-only (Pelias, Nominatim fallback, OTP, Valhalla; OSRM secondary).
+- Alerts are local notifications or SMTP only.
+
 [![The San Francisco Microclimate Map :: Behance](https://tse3.mm.bing.net/th/id/OIP.mabHv2kZM_F6YUKbkkHvxwHaEy?pid=Api)](https://www.behance.net/gallery/23314167/The-San-Francisco-Microclimate-Map?utm_source=chatgpt.com)
 
 ## Ranked frontier features (top 10 by impact)
@@ -108,7 +118,7 @@ Most people lose because they’re searching the same handful of aggregators. Th
 #### Models & storage
 
 * **OpenAI embeddings** for similarity matching (dedupe, building name variants, “same floorplan” clustering). ([OpenAI Platform][13])
-* **Vector store** for semantic retrieval over raw scraped pages + extracted facts, enabling “show me all listings that imply south-facing light and quiet bedrooms.” ([OpenAI Platform][14])
+* **pgvector (Postgres)** for semantic retrieval over raw scraped pages + extracted facts, enabling “show me all listings that imply south-facing light and quiet bedrooms.”
 * **Batch API** for large-scale offline processing (e.g., nightly extraction refreshes) while keeping “hot listings” on real-time processing. ([OpenAI Platform][15])
 
 #### UX outputs

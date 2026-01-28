@@ -1,5 +1,10 @@
 # Phase 8 Test Plan (UI and Evaluation/QA)
 
+## References
+- architecture_evidence.md
+- architecture_api_contracts.md
+
+
 ## Purpose
 Define rigorous tests for Phase 8 to validate UI behavior and evaluation/QA determinism using frozen snapshots.
 

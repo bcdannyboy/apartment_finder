@@ -1,3 +1,13 @@
+STATUS: Non-authoritative research notes. Superseded where conflicts with architecture_source_of_truth.md and architecture_decisions_and_naming.md.
+
+Overrides:
+- Paid services limited to OpenAI and Firecrawl.
+- Retrieval uses Postgres FTS + pgvector only.
+- Extraction is centralized in Extraction Service; connectors do not extract.
+- Manual-only sources are ImportTask only; no automated crawling.
+- Geo and routing are local-only (Pelias, Nominatim fallback, OTP, Valhalla; OSRM secondary).
+- Alerts are local notifications or SMTP only.
+
 ## Schema
 
 Below is a **canonical, unit-centric** model with **explicit provenance + evidence**, and a clean separation between:
@@ -108,7 +118,7 @@ This is the “thing you rank/filter.” It’s an **Offer + Unit + Building** b
       "lat": "number|null",
       "lon": "number|null",
       "provider": "string|null",                // google|mapbox|pelias|nominatim|...
-      "provider_accuracy": "string|null",       // e.g., Google "ROOFTOP" / "RANGE_INTERPOLATED"; Mapbox "rooftop/parcel/interpolated/..."
+      "provider_accuracy": "string|null",       // provider-specific accuracy or match type
       "precision": "enum",                      // rooftop|parcel|interpolated|intersection|neighborhood|zip_centroid|unknown
       "confidence": "number"                    // 0..1 internal score
     },
@@ -261,7 +271,7 @@ For each URL:
 
   * `doc_id`, `url`, `source_name`, `fetched_at`
   * `http_status`, `final_url`, `content_hash_sha256(html|markdown)`
-  * raw blob pointers (S3/GCS)
+  * raw blob pointers (filesystem)
 
 This enables:
 
@@ -335,9 +345,8 @@ Geocode only after normalization and with multiple strategies:
 
 **Strategy A: exact address geocode**
 
-* Use Google/Mapbox (paid, high quality) + optionally Pelias/Nominatim as secondary signals.
-* Google returns `location_type` (e.g., **ROOFTOP** vs **RANGE_INTERPOLATED**); interpolated results generally occur when rooftop is unavailable. Use this to compute `geocode.precision` + confidence. ([Google for Developers][8])
-* Mapbox provides an explicit accuracy metric for address features (e.g., `rooftop`, `parcel`, `interpolated`, `intersection`, `street`). Map this to your `precision`. ([Mapbox][9])
+* Use Pelias (self-hosted) as primary and Nominatim (self-hosted) as fallback.
+* Map provider-specific match/accuracy fields into `geocode.precision` + confidence.
 
 **Strategy B: cross streets / intersection geocode**
 Craigslist can allow pins from cross streets. If you only have cross streets, set:
@@ -533,7 +542,7 @@ For each canonical field:
 * **Availability date**: choose most recent; if conflicting, keep both + set `status_reason="availability_conflict"`
 * **Address**:
 
-  * prefer exact address with high geocode precision (`ROOFTOP` or Mapbox `rooftop/parcel`) ([Google for Developers][8])
+* prefer exact address with high geocode precision
   * if only cross-streets/zip: keep redacted; never “invent” a street address
 * **Unit descriptor normalization**:
 
@@ -635,13 +644,14 @@ Use Postgres as the authoritative store:
    * `cluster_id`, `observation_id`, `match_probability`, `linked_at`
 5. `field_observations`
 
-   * (optional normalized table if you don’t want JSONB-only)
-   * `canonical_listing_id`, `field_path`, `value_json`, `observation_id`, `confidence`, `evidence[]`
+  * (optional normalized table if you don’t want JSONB-only)
+  * `canonical_listing_id`, `field_path`, `value_json`, `observation_id`, `confidence`
+  * evidence stored in a separate Evidence table with fact_evidence links
 6. `listing_changes`
 
    * `canonical_listing_id`, `changed_at`, `change_type`, `old_value`, `new_value`, `observation_id`
 
-### Search index: OpenSearch/Elasticsearch
+### Search index: Postgres FTS
 
 Use it for:
 
@@ -649,20 +659,20 @@ Use it for:
 * full-text search (“Victorian,” “in-law,” “rent controlled”)
 * geo filters (bounding boxes / polygons)
 
-You still keep Postgres as truth; OpenSearch is a derived index.
+You still keep Postgres as truth; Postgres FTS is the derived text index.
 
-### Vector store: pgvector (inside Postgres) or dedicated
+### Vector store: pgvector (inside Postgres)
 
 For:
 
 * semantic similarity of descriptions (dedupe + search)
 * “find similar units to this one”
 
-Given unlimited budget you can use a dedicated vector DB, but **pgvector** is often sufficient and simplifies consistency.
+Use **pgvector** inside Postgres for vector search and consistency.
 
 ### Media store: object storage + hash indexes
 
-* Put images in S3/GCS
+* Put images in the filesystem object store
 * In Postgres:
 
   * `sha256` (exact matches)

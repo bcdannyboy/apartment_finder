@@ -1,10 +1,20 @@
+STATUS: Non-authoritative research notes. Superseded where conflicts with architecture_source_of_truth.md and architecture_decisions_and_naming.md.
+
+Overrides:
+- Paid services limited to OpenAI and Firecrawl.
+- Retrieval uses Postgres FTS + pgvector only.
+- Extraction is centralized in Extraction Service; connectors do not extract.
+- Manual-only sources are ImportTask only; no automated crawling.
+- Geo and routing are local-only (Pelias, Nominatim fallback, OTP, Valhalla; OSRM secondary).
+- Alerts are local notifications or SMTP only.
+
 ## Executive summary
 
 * **Two-tier acquisition**: (A) *licensed/official feeds where needed*, (B) *compliant crawling + discovery* for long-tail PM/broker sites; **no botting/CAPTCHA bypass** on prohibited marketplaces. ([craigslist][1])
 * **Provenance-first data pipeline**: store every raw snapshot + structured extraction + field-level confidence/evidence, so you can trust, audit, and re-process.
 * **Hybrid extraction**: deterministic parsers when templates are known; otherwise **OpenAI Structured Outputs** for schema-perfect JSON extraction + vision for photos/floorplans. ([OpenAI Platform][2])
 * **Entity resolution that works in SF reality**: address normalization + unit disambiguation (basements/upper/lower, fractional addresses, missing unit numbers) + cross-post dedupe. ([Postal Explorer][3])
-* **Geo/commute engine as a first-class service**: PostGIS + neighborhood polygons + **time-of-day multimodal commute** via OTP/GTFS + optional matrix/isochrone APIs. ([OpenTripPlanner][4])
+* **Geo/commute engine as a first-class service**: PostGIS + neighborhood polygons + **time-of-day multimodal commute** via OTP/GTFS + Valhalla isochrones/matrices. ([OpenTripPlanner][4])
 * **Ranking that avoids “same-y results”**: strict filters → high-recall candidate pool → calibrated utility scoring → LLM rerank → diversity-aware rerank (MMR x neighborhoods x source x price bands).
 * **Freshness + change detection**: adaptive recrawl scheduler + diffing; optionally use Firecrawl change tracking for “new/same/changed/removed” and visibility. ([Firecrawl][5])
 * **Coverage maximization loops**: systematic sweeps (neighborhood × bed × price × time) + discovery via Firecrawl Search/Map/Crawl + missed-listing audits. ([Firecrawl][6])
@@ -12,6 +22,17 @@
 * **Evaluation is built-in from day 1**: golden sets + regression suites + coverage & freshness dashboards; use Batch for cheap nightly re-extraction/reranks. ([OpenAI Platform][7])
 
 ---
+
+## Project constraints overlay (authoritative for this repo)
+- Only paid services: Firecrawl and OpenAI.
+- Local-first only; services bind to localhost.
+- Geo/commute: Pelias + OpenTripPlanner + Valhalla only (no paid geo APIs).
+- Retrieval: Postgres FTS + pgvector only (no external search or vector DB).
+- Alerts: local notifications or SMTP only.
+- Queue: Redis + RQ.
+- Object storage: filesystem.
+- UI: full SPA.
+- Evidence storage: normalized Evidence table with fact_evidence links.
 
 ## Final architecture diagram
 
@@ -33,8 +54,8 @@
                 │                       ▼                     │
         ┌───────┴─────────────────────────────────────────────┴───────┐
         │                   Canonical Data Platform                     │
-        │  Postgres + PostGIS (truth) | Search (OpenSearch) | Vector DB │
-        │  Objects (raw HTML/MD/screens) | Feature Store | Audit Logs    │
+        │  Postgres + PostGIS (truth) | Postgres FTS + pgvector          │
+        │  Objects (filesystem raw HTML/MD/screens) | Audit Logs         │
         └───────▲───────────────────────────────▲──────────────────────┘
                 │                               │
      enrichment  │                               │ extraction/ER
@@ -43,7 +64,7 @@
 │ Geo + Commute Enrichment      │     │ Extraction + Normalization       │
 │ - geocode (primary+fallback)  │     │ - deterministic + LLM extraction  │
 │ - neighborhoods/H3            │     │ - schema validation               │
-│ - OTP/GTFS + matrix/isochrones│     │ - dedupe/entity resolution        │
+│ - OTP/GTFS + Valhalla          │     │ - dedupe/entity resolution        │
 │ - QoL layers (noise, hills...)│     │ - field-level confidence/evidence │
 └───────────────▲──────────────┘     └──────────▲──────────────────────┘
                 │                                 │
@@ -147,8 +168,8 @@ Geo enrichment steps:
 
 1. **Geocode** (address → lat/lng + precision)
 
-   * Choose **Mapbox as primary** because permanent geocoding results can be stored and used indefinitely under “permanent” geocoding. ([Mapbox][16])
-   * Use **Google as fallback** only when needed, but respect caching and “no use with non-Google map” restrictions for Geocoding content (lat/lng cache max 30 days; place IDs can be stored indefinitely). ([Google Cloud][17])
+   * Use **Pelias (self-hosted)** as primary for unlimited local queries.
+   * Use **Nominatim (self-hosted)** as optional fallback when Pelias confidence is low.
 2. **Neighborhood / polygon membership**
 
    * Assign SF neighborhoods, planning districts, school zones, etc (DataSF).
@@ -159,10 +180,7 @@ Geo enrichment steps:
 
    * **OpenTripPlanner (OTP)** for multimodal transit/bike/walk itineraries using OSM + GTFS. ([OpenTripPlanner][4])
    * Feed OTP with **511 SF Bay GTFS + GTFS-RT** (token-based, bulk and API). ([511.org][18])
-   * For fast matrix / driving times:
-
-     * Mapbox Matrix for travel-time matrices. ([Mapbox][19])
-     * Optionally TravelTime for scalable matrices + isochrones (public transport/walking/cycling/driving). ([TravelTime API Documentation][20])
+   * **Valhalla** for walk/bike/drive matrices and isochrones (local only).
 
 ---
 
@@ -175,7 +193,7 @@ Pipeline:
 1. **Hard filter**: must-haves (budget ceiling, min beds, pet constraint, commute max, etc).
 2. **Candidate retrieval**:
 
-   * Full-text (OpenSearch) + semantic retrieval (embeddings) over descriptions and amenity text. OpenAI embeddings are designed for search/recommendation and can be stored in your vector DB. ([OpenAI Platform][21])
+   * Postgres FTS + pgvector over descriptions and amenity text. OpenAI embeddings are stored in pgvector. ([OpenAI Platform][21])
 3. **Utility scoring** (fast model):
 
    * `utility = Σ w_i * feature_i` where `feature_i` includes: price value score, commute score, neighborhood preference, amenity match, risk penalties.
@@ -236,7 +254,7 @@ UI should support the real hunting workflow:
 **Alerting**
 
 * Profile-based alerts: new matches, price drops, availability date changes, “listing removed”.
-* Delivery: email + SMS/push (Twilio) + daily digest.
+* Delivery: local notifications or SMTP email only.
 
 ---
 
@@ -424,7 +442,7 @@ Deliverables:
   * address + unit label + phone/email + image hash.
 * **Geo v1**:
 
-  * geocode (Mapbox), neighborhood assignment, distance-to-anchors, basic driving matrix via Mapbox Matrix. ([Mapbox][16])
+  * geocode (Pelias), neighborhood assignment, distance-to-anchors, basic drive matrix via Valhalla.
 * **UI v1**:
 
   * list+map, filters, save/hide, notes, compare, shortlist.
@@ -449,7 +467,7 @@ Deliverables:
 * **Commute engine v2**:
 
   * OTP running locally + 511 GTFS feeds; compute time-of-day transit. ([OpenTripPlanner][4])
-  * isochrone overlays (TravelTime optional). ([TravelTime API Documentation][22])
+  * isochrone overlays (Valhalla, local only).
 * **Ranking v2**:
 
   * LLM rerank + diversity rerank
@@ -488,7 +506,7 @@ Deliverables:
   * nightly Batch jobs for re-extraction + embedding refresh + rerank. ([OpenAI Platform][7])
 * **Power user workflow**:
 
-  * email/SMS templates, tour scheduling support, document checklist, “apply now” playbook.
+  * email templates, tour scheduling support, document checklist, “apply now” playbook.
 
 ---
 
@@ -594,16 +612,16 @@ Then:
 | Web crawl/render      |       |   ✅ | **Firecrawl** + fallback lightweight fetcher   | Search/Map/Crawl/Extract + change tracking accelerates long-tail coverage. ([Firecrawl][6])                  |
 | LLM extraction/rerank |       |   ✅ | **OpenAI Responses + Structured Outputs**      | Schema-perfect extraction, multimodal, tool calling. ([OpenAI Platform][2])                                  |
 | Batch reprocessing    |       |   ✅ | **OpenAI Batch API**                           | 50% lower cost, high rate limits, 24h SLA—ideal for nightly re-extraction/embeddings. ([OpenAI Platform][7]) |
-| Embeddings            |       |   ✅ | OpenAI embeddings + your vector DB             | Designed for semantic search/recs. ([OpenAI Platform][21])                                                   |
-| Vector store          |     ✅ |   ✅ | **Start: pgvector**; scale: managed (Pinecone) | Start simple; upgrade if needed.                                                                             |
+| Embeddings            |       |   ✅ | OpenAI embeddings + pgvector                   | Designed for semantic search/recs. ([OpenAI Platform][21])                                                   |
+| Vector store          |     ✅ |     | **pgvector**                                   | Local-only vector storage.                                                                                   |
 | Relational + geo      |     ✅ |     | **Postgres + PostGIS**                         | Canonical truth + geo joins.                                                                                 |
-| Search index          |       |   ✅ | **Managed OpenSearch**                         | Fast filters + text queries; easy ops.                                                                       |
-| Geocoding             |       |   ✅ | **Mapbox primary; Google fallback**            | Mapbox permanent storage allowed; Google has caching + non-Google map restrictions. ([Mapbox][16])           |
-| Commute routing       |     ✅ |   ✅ | **OTP + 511 GTFS**, plus Matrix/TravelTime     | OTP gives control; APIs give speed & coverage. ([OpenTripPlanner][4])                                        |
+| Search index          |     ✅ |     | **Postgres FTS**                               | Fast filters + text queries with local storage.                                                              |
+| Geocoding             |     ✅ |     | **Pelias primary; Nominatim fallback**         | Local-only geocoding with full control.                                                                      |
+| Commute routing       |     ✅ |     | **OTP + 511 GTFS + Valhalla**                  | Local-only routing with transit and walk/bike/drive. ([OpenTripPlanner][4])                                  |
 | Address normalization |     ✅ |     | libpostal                                      | Proven address normalization for dedupe. ([GitHub][14])                                                      |
 | Marketplace data      |       |   ✅ | **License/partner or manual import**           | ToS often prohibits automated access/scraping/AI use. ([craigslist][1])                                      |
-| Notifications         |     ✅ |   ✅ | Twilio/SendGrid                                | Don’t reinvent deliverability.                                                                               |
-| Observability         |     ✅ |   ✅ | Managed Grafana/Datadog                        | Fast iteration + reliability.                                                                                |
+| Notifications         |     ✅ |     | Local notifications or SMTP                    | Local-only delivery.                                                                                         |
+| Observability         |     ✅ |     | Local Prometheus + Grafana                     | Local-only metrics and dashboards.                                                                           |
 
 ---
 
@@ -611,7 +629,7 @@ Then:
 
 * **Compliance vs “all sources”**: You *cannot* safely automate scraping on several major portals without licensing; build the system so those sources are either **partner feeds** or **manual-only imports**. ([craigslist][1])
 * **Provenance-first is non-negotiable**: it’s the only way to keep accuracy high while scaling to messy long-tail sources; it also enables trustworthy UI (“show me where you got that pet policy”).
-* **Mapbox-first geo**: permanent caching makes the data platform workable; Google fallback is powerful but comes with caching and “non-Google map” restrictions that complicate a custom UI. ([Mapbox][16])
+* **Local-first geo**: Pelias + OTP + Valhalla keep geocoding and routing local and compliant.
 * **Hybrid extraction beats “LLM-only”**: deterministic extraction reduces cost/latency and improves stability; LLM handles tail cases and normalizes messy language—Structured Outputs reduces fragility. ([OpenAI Platform][13])
 * **Diversity is a product feature**: you’ll miss great apartments if the system collapses to “same neighborhood, same PM, same vibe.” Make diversity a first-class rerank objective.
 * **Freshness is an engineering feature**: adaptive recrawl + change tracking beats naive “crawl everything daily”; measure time-to-discover and time-to-detect-change. ([Firecrawl][5])

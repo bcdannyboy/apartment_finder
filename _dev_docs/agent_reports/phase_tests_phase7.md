@@ -1,5 +1,10 @@
 # Phase 7 Alert Service Test Plan
 
+## References
+- architecture_api_contracts.md
+- architecture_decisions_and_naming.md
+
+
 ## Scope and constraints
 - Alert Service consumes ListingChange records and SearchSpec profiles and emits notifications plus dispatch logs.
 - Allowed channels: local notifications and SMTP only. No paid messaging or third-party push/SMS/chat.
